@@ -1,4 +1,4 @@
-import * as brandService from '../services/brand.service.js';
+import * as brandService from "../services/brand.service.js";
 
 export const brandController = {
   async listPublic(req, res) {
@@ -11,13 +11,27 @@ export const brandController = {
     res.json({ data: await brandService.getBrand(req.params.id) });
   },
   async create(req, res) {
-    res.status(201).json({ data: await brandService.createBrand(req.body, { adminId: req.user._id }) });
+    res
+      .status(201)
+      .json({
+        data: await brandService.createBrand(req.body, {
+          adminId: req.user._id,
+        }),
+      });
   },
   async update(req, res) {
-    res.json({ data: await brandService.updateBrand(req.params.id, req.body, { adminId: req.user._id }) });
+    res.json({
+      data: await brandService.updateBrand(req.params.id, req.body, {
+        adminId: req.user._id,
+      }),
+    });
   },
   async deactivate(req, res) {
-    res.json({ message: 'Brand deactivated.',
-      data: await brandService.deactivateBrand(req.params.id, { adminId: req.user._id }) });
+    res.json({
+      message: "Đã vô hiệu hóa thương hiệu.",
+      data: await brandService.deactivateBrand(req.params.id, {
+        adminId: req.user._id,
+      }),
+    });
   },
 };

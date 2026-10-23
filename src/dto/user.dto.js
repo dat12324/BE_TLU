@@ -1,17 +1,36 @@
 // Danh sách trường được phép rõ ràng áp dụng cho tài liệu, kết quả lean và kết quả aggregation.
 // Chỉ sử dụng sau khi đã kiểm tra quyền truy cập thông tin người dùng được yêu cầu.
-const pick = (source, fields) => Object.fromEntries(
-  fields.filter(field => source[field] !== undefined).map(field => [field, source[field]]),
-);
+const pick = (source, fields) =>
+  Object.fromEntries(
+    fields
+      .filter((field) => source[field] !== undefined)
+      .map((field) => [field, source[field]]),
+  );
 
 function identity(user) {
   return {
     id: user._id?.toString(),
-    ...pick(user, ['fullName', 'email', 'phoneNumber']),
+    ...pick(user, ["fullName", "email", "phoneNumber"]),
     // Hỗ trợ chuỗi cũ trong kết quả lean/aggregation; giữ ID lưu trữ ở phía máy chủ.
-    ...(user.avatar == null ? {} : {
-      avatar: { url: typeof user.avatar === 'string' ? user.avatar.trim() : user.avatar.url },
-    }),
+    ...(user.avatar == null
+      ? {}
+      : {
+          avatar: {
+            url:
+              typeof user.avatar === "string"
+                ? user.avatar.trim()
+                : user.avatar.url,
+          },
+        }),
+  };
+}
+
+function verification(user) {
+  const verified = user.emailVerified ?? user.isEmailVerified ?? false;
+  return {
+    emailVerified: verified,
+    isEmailVerified: verified,
+    ...pick(user, ["emailVerifiedAt"]),
   };
 }
 
@@ -19,11 +38,18 @@ export function toCustomerUserDTO(user) {
   if (!user) return null;
   return {
     ...identity(user),
-    ...pick(user, ['dateOfBirth', 'gender', 'isEmailVerified']),
-    addresses: (user.addresses ?? []).map(address => ({
+    ...pick(user, ["dateOfBirth", "gender"]),
+    ...verification(user),
+    addresses: (user.addresses ?? []).map((address) => ({
       id: address._id?.toString(),
       ...pick(address, [
-        'recipientName', 'phoneNumber', 'streetAddress', 'ward', 'district', 'city', 'isDefault',
+        "recipientName",
+        "phoneNumber",
+        "streetAddress",
+        "ward",
+        "district",
+        "city",
+        "isDefault",
       ]),
     })),
   };
@@ -40,6 +66,7 @@ export function toAdminUserDTO(user) {
   if (!user) return null;
   return {
     ...identity(user),
-    ...pick(user, ['role', 'isActive', 'isEmailVerified', 'createdAt', 'updatedAt']),
+    ...pick(user, ["role", "isActive", "createdAt", "updatedAt"]),
+    ...verification(user),
   };
 }

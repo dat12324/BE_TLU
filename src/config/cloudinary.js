@@ -1,11 +1,14 @@
-import cloudinary from 'cloudinary';
-import { readCloudinaryConfig } from './env.js';
-import { HttpError } from '../utils/http-error.js';
+import cloudinary from "cloudinary";
+import { readCloudinaryConfig } from "./env.js";
+import { HttpError } from "../utils/http-error.js";
 
 export function loadCloudinaryConfig(env = process.env) {
   const config = readCloudinaryConfig(env);
   if (!config.cloud_name || !config.api_key || !config.api_secret) {
-    throw new HttpError(503, 'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.');
+    throw new HttpError(
+      503,
+      "Chưa cấu hình Cloudinary. Vui lòng thiết lập CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY và CLOUDINARY_API_SECRET.",
+    );
   }
   return config;
 }

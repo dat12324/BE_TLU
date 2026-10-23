@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { createHealthController } from '../controllers/health.controller.js';
 import { createAuthRouter } from './auth.routes.js';
-import { createAuthService } from '../services/auth.service.js';
-import { createAuthenticate, requireAdmin } from '../middleware/auth.middleware.js';
+import { verifyRole } from '../middleware/auth.middleware.js';
 import { createBrandRouter, createAdminBrandRouter } from './brand.routes.js';
 import { createCategoryRouter, createAdminCategoryRouter } from './category.routes.js';
 import { createAdminImageRouter } from './image.routes.js';
 import { createUserRouter } from './user.routes.js';
+import { createProductRouter, createAdminProductRouter } from './product.routes.js';
 
 export function createApiRouter(isDatabaseConnected, config) {
   const router = Router();
@@ -14,11 +14,13 @@ export function createApiRouter(isDatabaseConnected, config) {
   router.use('/auth', createAuthRouter(config));
   router.use('/brands', createBrandRouter());
   router.use('/categories', createCategoryRouter());
-  router.use('/users', createUserRouter(config));
-  // Mọi endpoint quản trị được gắn dưới dòng này đều áp dụng cả hai bước kiểm tra.
-  router.use('/admin', createAuthenticate(createAuthService(config)), requireAdmin);
+  router.use('/products', createProductRouter());
+  router.use('/users', createUserRouter());
+  // Authenticate and authorize every Admin endpoint before its handlers or Multer.
+  router.use('/admin', verifyRole(['admin']));
   router.use('/admin/brands', createAdminBrandRouter());
   router.use('/admin/categories', createAdminCategoryRouter());
+  router.use('/admin/products', createAdminProductRouter());
   router.use('/admin/images', createAdminImageRouter());
   return router;
 }

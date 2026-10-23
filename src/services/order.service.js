@@ -1,11 +1,11 @@
-import { randomUUID } from 'node:crypto';
-import mongoose from 'mongoose';
-import Order from '../models/Order.js';
-import Product from '../models/Product.js';
-import ProductVariant from '../models/ProductVariant.js';
-import { HttpError } from '../utils/http-error.js';
+import { randomUUID } from "node:crypto";
+import mongoose from "mongoose";
+import Order from "../models/Order.js";
+import Product from "../models/Product.js";
+import ProductVariant from "../models/ProductVariant.js";
+import { HttpError } from "../utils/http-error.js";
 
-const isMoney = value => Number.isSafeInteger(value) && value >= 0;
+const isMoney = (value) => Number.isSafeInteger(value) && value >= 0;
 const maxSafeAmount = BigInt(Number.MAX_SAFE_INTEGER);
 
 function safeAmount(value, message) {
@@ -15,65 +15,126 @@ function safeAmount(value, message) {
 
 // Chỉ chuẩn bị document; checkout sau này lưu cùng thao tác giữ hàng trong transaction.
 // user, discountAmount và shippingFee do backend đã xác thực/tính toán cung cấp, không lấy từ req.body.
-export async function prepareOrder(input, { user, discountAmount = 0, shippingFee = 0, session } = {}) {
-  if (!mongoose.isObjectIdOrHexString(user)) throw new HttpError(400, 'Valid User is required.');
+export async function prepareOrder(
+  input,
+  { user, discountAmount = 0, shippingFee = 0, session } = {},
+) {
+  if (!mongoose.isObjectIdOrHexString(user))
+    throw new HttpError(400, "Vui lòng cung cấp người dùng hợp lệ.");
   if (!input || !Array.isArray(input.items) || input.items.length === 0) {
-    throw new HttpError(400, 'Order must contain at least one valid item.');
+    throw new HttpError(400, "Đơn hàng phải có ít nhất một sản phẩm hợp lệ.");
   }
   if (!isMoney(discountAmount) || !isMoney(shippingFee)) {
-    throw new HttpError(400, 'Amount must be a non-negative safe integer in VND.');
+    throw new HttpError(
+      400,
+      "Số tiền phải là số nguyên không âm trong phạm vi an toàn, tính bằng VND.",
+    );
   }
 
   const ids = new Set();
   for (const item of input.items) {
-    if (!item || !mongoose.isObjectIdOrHexString(item.productVariant)
-      || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) {
-      throw new HttpError(400, 'Valid ProductVariant and positive safe integer quantity are required.');
+    if (
+      !item ||
+      !mongoose.isObjectIdOrHexString(item.productVariant) ||
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity <= 0
+    ) {
+      throw new HttpError(
+        400,
+        "Vui lòng cung cấp biến thể sản phẩm hợp lệ và số lượng nguyên dương trong phạm vi an toàn.",
+      );
     }
     const id = item.productVariant.toString().toLowerCase();
-    if (ids.has(id)) throw new HttpError(400, 'Order items must reference distinct ProductVariants.');
+    if (ids.has(id))
+      throw new HttpError(
+        400,
+        "Các sản phẩm trong đơn hàng không được trùng biến thể.",
+      );
     ids.add(id);
   }
 
   const variants = await ProductVariant.find({
-    _id: { $in: [...ids] }, status: 'active', deletedAt: null,
-  }).select('product sku ram storage color images price')
-    .populate({ path: 'product', model: Product, select: 'name status images',
-      options: { session } })
-    .session(session ?? null).lean();
-  const byId = new Map(variants.map(variant => [variant._id.toString(), variant]));
-  const items = input.items.map(item => {
+    _id: { $in: [...ids] },
+    status: "active",
+    deletedAt: null,
+  })
+    .select("product sku ram storage color images price")
+    .populate({
+      path: "product",
+      model: Product,
+      select: "name status images",
+      options: { session },
+    })
+    .session(session ?? null)
+    .lean();
+  const byId = new Map(
+    variants.map((variant) => [variant._id.toString(), variant]),
+  );
+  const items = input.items.map((item) => {
     const variant = byId.get(item.productVariant.toString().toLowerCase());
-    if (!variant || variant.product?.status !== 'active') {
-      throw new HttpError(409, 'Product or variant is unavailable.');
+    if (!variant || variant.product?.status !== "active") {
+      throw new HttpError(409, "Sản phẩm hoặc biến thể hiện không khả dụng.");
     }
-    if (!isMoney(variant.price)) throw new HttpError(409, 'Product price is invalid.');
-    const subtotal = safeAmount(BigInt(item.quantity) * BigInt(variant.price),
-      'Item subtotal must equal quantity times unit price within the safe integer limit.');
-    const imageUrl = variant.color?.image?.url ?? variant.images?.[0]?.url
-      ?? variant.product.images?.find(image => image.isPrimary)?.url
-      ?? variant.product.images?.[0]?.url;
+    if (!isMoney(variant.price))
+      throw new HttpError(409, "Giá sản phẩm không hợp lệ.");
+    const subtotal = safeAmount(
+      BigInt(item.quantity) * BigInt(variant.price),
+      "Thành tiền sản phẩm phải bằng số lượng nhân đơn giá và nằm trong phạm vi số nguyên an toàn.",
+    );
+    const imageUrl =
+      variant.color?.image?.url ??
+      variant.images?.[0]?.url ??
+      variant.product.images?.find((image) => image.isPrimary)?.url ??
+      variant.product.images?.[0]?.url;
     return {
-      product: variant.product._id, productVariant: variant._id,
-      productName: variant.product.name, sku: variant.sku, ram: variant.ram,
-      storage: variant.storage, color: variant.color?.name, imageUrl,
-      quantity: item.quantity, unitPrice: variant.price, subtotal,
+      product: variant.product._id,
+      productVariant: variant._id,
+      productName: variant.product.name,
+      sku: variant.sku,
+      ram: variant.ram,
+      storage: variant.storage,
+      color: variant.color?.name,
+      imageUrl,
+      quantity: item.quantity,
+      unitPrice: variant.price,
+      subtotal,
     };
   });
-  const subtotal = safeAmount(items.reduce((sum, item) => sum + BigInt(item.subtotal), 0n),
-    'Order subtotal must equal the sum of item subtotals within the safe integer limit.');
-  if (discountAmount > subtotal) throw new HttpError(400, 'Discount amount cannot exceed subtotal.');
-  const totalAmount = safeAmount(BigInt(subtotal) - BigInt(discountAmount) + BigInt(shippingFee),
-    'Total amount must equal subtotal minus discount plus shipping within the safe integer limit.');
+  const subtotal = safeAmount(
+    items.reduce((sum, item) => sum + BigInt(item.subtotal), 0n),
+    "Tổng tiền hàng phải bằng tổng thành tiền các sản phẩm và nằm trong phạm vi số nguyên an toàn.",
+  );
+  if (discountAmount > subtotal)
+    throw new HttpError(
+      400,
+      "Số tiền giảm giá không được vượt quá tổng tiền hàng.",
+    );
+  const totalAmount = safeAmount(
+    BigInt(subtotal) - BigInt(discountAmount) + BigInt(shippingFee),
+    "Tổng thanh toán phải bằng tổng tiền hàng trừ giảm giá cộng phí vận chuyển và nằm trong phạm vi số nguyên an toàn.",
+  );
   const address = input.shippingAddress;
   const order = new Order({
-    orderCode: `TLU-${randomUUID()}`, user, items,
-    shippingAddress: address == null ? undefined : {
-      fullName: address.fullName, phone: address.phone, province: address.province,
-      district: address.district, ward: address.ward, detailAddress: address.detailAddress,
-    },
-    subtotal, discountAmount, shippingFee, totalAmount,
-    paymentMethod: input.paymentMethod, note: input.note,
+    orderCode: `TLU-${randomUUID()}`,
+    user,
+    items,
+    shippingAddress:
+      address == null
+        ? undefined
+        : {
+            fullName: address.fullName,
+            phone: address.phone,
+            province: address.province,
+            district: address.district,
+            ward: address.ward,
+            detailAddress: address.detailAddress,
+          },
+    subtotal,
+    discountAmount,
+    shippingFee,
+    totalAmount,
+    paymentMethod: input.paymentMethod,
+    note: input.note,
   });
   await order.validate();
   return order;

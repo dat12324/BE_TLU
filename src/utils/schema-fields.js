@@ -4,8 +4,12 @@ export function numericSpec(positive = false) {
   return {
     type: Number,
     validate: {
-      validator: value => value == null || (Number.isFinite(value) && (positive ? value > 0 : value >= 0)),
-      message: positive ? 'Value must be finite and greater than zero.' : 'Value must be finite and non-negative.',
+      validator: (value) =>
+        value == null ||
+        (Number.isFinite(value) && (positive ? value > 0 : value >= 0)),
+      message: positive
+        ? "Giá trị phải là số hữu hạn và lớn hơn 0."
+        : "Giá trị phải là số hữu hạn và không âm.",
     },
   };
 }
