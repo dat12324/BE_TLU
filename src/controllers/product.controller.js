@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import * as productService from "../services/product.service.js";
 import { HttpError } from "../utils/http-error.js";
 
-async function saveResponse(res, operation, status = 200) {
+const saveResponse = async (res, operation, status = 200) => {
   try {
     const product = await operation;
     const data = product.toObject();
@@ -25,40 +25,123 @@ async function saveResponse(res, operation, status = 200) {
       throw new HttpError(404, "Không tìm thấy sản phẩm.");
     throw error;
   }
-}
+};
 
 export const productController = {
-  async listPublic(req, res) {
-    res.json(await productService.listProducts(req.validatedQuery));
-  },
-  async listAdmin(req, res) {
+  async list(req, res) {
+    const admin = req.user?.role === "admin";
+    const { page, limit, search, brand, category } = req.query;
+    const status = admin ? req.query.status : "active";
     res.json(
-      await productService.listProducts(req.validatedQuery, { admin: true }),
+      await productService.listProducts(
+        page,
+        limit,
+        search,
+        brand,
+        category,
+        status,
+        admin,
+      ),
     );
   },
-  async getAdmin(req, res) {
-    res.json({ data: await productService.getProduct(req.params.id) });
+  async getProductDetail(req, res) {
+    res.json({ data: await productService.getProductDetail(req.params.slug) });
   },
-  async getPublic(req, res) {
+  async getAdminProductDetail(req, res) {
     res.json({
-      data: await productService.getPublicProduct(req.validatedSlug),
+      data: await productService.getProductDetail(req.params.id, true),
     });
   },
   async create(req, res) {
+    const {
+      name,
+      slug,
+      brand,
+      category,
+      shortDescription,
+      description,
+      highlights,
+      images,
+      technicalSpecs,
+      specifications,
+      tags,
+      flags,
+      status,
+    } = req.body;
+    const uploaded =
+      req.files?.map((file) => ({ url: file.path, publicId: file.filename })) ??
+      [];
     await saveResponse(
       res,
-      productService.createProduct(req.validatedBody, {
-        adminId: req.user._id,
-      }),
+      productService
+        .createProduct(
+          name,
+          slug,
+          brand,
+          category,
+          shortDescription,
+          description,
+          highlights,
+          uploaded.length ? uploaded : images,
+          technicalSpecs,
+          specifications,
+          tags,
+          flags,
+          status,
+          req.user._id,
+        )
+        .then((product) => {
+          req.uploadCommitted = true;
+          return product;
+        }),
       201,
     );
   },
   async update(req, res) {
+    const {
+      name,
+      slug,
+      brand,
+      category,
+      shortDescription,
+      description,
+      highlights,
+      images,
+      technicalSpecs,
+      specifications,
+      tags,
+      flags,
+      status,
+    } = req.body;
+    const uploaded =
+      req.files?.map((file) => ({ url: file.path, publicId: file.filename })) ??
+      [];
     await saveResponse(
       res,
-      productService.updateProduct(req.params.id, req.validatedBody, {
-        adminId: req.user._id,
-      }),
+      productService
+        .updateProduct(
+          req.params.id,
+          name,
+          slug,
+          brand,
+          category,
+          shortDescription,
+          description,
+          highlights,
+          images,
+          technicalSpecs,
+          specifications,
+          tags,
+          flags,
+          status,
+          req.user._id,
+          undefined,
+          uploaded,
+        )
+        .then((product) => {
+          req.uploadCommitted = true;
+          return product;
+        }),
     );
   },
 };

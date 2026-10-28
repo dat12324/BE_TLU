@@ -1,17 +1,17 @@
 import mongoose from "mongoose";
+import slugify from "slugify";
+import { normalizePagination } from "../utils/pagination.js";
 import Category from "../models/Category.js";
-import {
-  validateCatalogId,
-  validateCatalogInput,
-  validateCatalogQuery,
-} from "../validators/catalog.validator.js";
+import { validateCatalogId } from "../validators/catalog.validator.js";
 import { HttpError } from "../utils/http-error.js";
+
 
 const adminFields =
   "name slug description image status createdBy updatedBy createdAt updatedAt";
 const publicFields = "name slug description image.url status";
 
-async function saveCategory(category) {
+const saveCategory = async (category) => {
+  let saved = false;
   try {
     await category.validate();
     const excludeSelf = { _id: { $ne: category._id } };
@@ -26,23 +26,27 @@ async function saveCategory(category) {
     if (await Category.exists({ slug: category.slug, ...excludeSelf }))
       throw new HttpError(409, "Đường dẫn danh mục đã tồn tại.");
     await category.save();
+    saved = true;
     const data = category.toObject();
     delete data.__v;
     return data;
   } catch (error) {
+    if (saved) Object.defineProperty(error, "uploadCommitted", { value: true });
     if (error.code === 11000)
       throw new HttpError(409, "Tên hoặc đường dẫn danh mục đã tồn tại.");
     if (error instanceof mongoose.Error.ValidationError)
       throw new HttpError(400, "Dữ liệu danh mục không hợp lệ.");
     if (error instanceof mongoose.Error.DocumentNotFoundError)
       throw new HttpError(404, "Không tìm thấy danh mục.");
+    if (error instanceof mongoose.Error.VersionError)
+      throw new HttpError(409, "Danh mục đã thay đổi. Vui lòng tải lại và thử lại.");
     throw error;
   }
-}
+};
 
-export async function listCategories(query = {}, { admin = false } = {}) {
-  const { page, limit, status } = validateCatalogQuery(query, admin);
-  const filter = admin ? (status ? { status } : {}) : { status: "active" };
+export const listCategories = async (page = 1, limit = 20, status, admin = false) => {
+  ({ page, limit } = normalizePagination(page, limit));
+  const filter = status ? { status } : {};
   const [data, total] = await Promise.all([
     Category.find(filter)
       .select(admin ? adminFields : publicFields)
@@ -56,36 +60,44 @@ export async function listCategories(query = {}, { admin = false } = {}) {
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
-}
+};
 
-export async function getCategory(id) {
+export const getCategory = async (id) => {
   validateCatalogId(id, "danh mục");
   const category = await Category.findById(id).select(adminFields).lean();
   if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
   return category;
-}
+};
 
-export async function createCategory(input, { adminId } = {}) {
-  validateCatalogId(adminId, "quản trị viên");
-  const data = validateCatalogInput(input, "image");
-  return saveCategory(
-    new Category({ ...data, createdBy: adminId, updatedBy: adminId }),
+export const createCategory = async (name, slug, description, image, status, adminId) => {
+  if (slug === undefined && typeof name === "string")
+    slug = slugify(name, { lower: true, strict: true, locale: "vi", trim: true });
+  const data = Object.fromEntries(
+    Object.entries({ name, slug, description, image, status }).filter(([, value]) => value !== undefined),
   );
-}
+  validateCatalogId(adminId, "quản trị viên");
+  const category = new Category({ ...data, createdBy: adminId, updatedBy: adminId });
+  return saveCategory(category);
+};
 
-export async function updateCategory(id, input, { adminId } = {}) {
+export const updateCategory = async (id, name, slug, description, image, status, adminId) => {
+  if (slug === undefined && typeof name === "string")
+    slug = slugify(name, { lower: true, strict: true, locale: "vi", trim: true });
+  const data = Object.fromEntries(
+    Object.entries({ name, slug, description, image, status }).filter(([, value]) => value !== undefined),
+  );
   validateCatalogId(id, "danh mục");
   validateCatalogId(adminId, "quản trị viên");
-  const data = validateCatalogInput(input, "image", true);
   const category = await Category.findById(id);
   if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
   for (const field of Object.keys(data)) category.set(field, data[field]);
   category.updatedBy = adminId;
+  if (image !== undefined) category.increment();
   return saveCategory(category);
-}
+};
 
 // Xóa mềm bằng status hiện có; không làm mất tham chiếu từ Product.
-export async function deactivateCategory(id, { adminId } = {}) {
+export const deactivateCategory = async (id, adminId) => {
   validateCatalogId(id, "danh mục");
   validateCatalogId(adminId, "quản trị viên");
   const category = await Category.findByIdAndUpdate(
@@ -97,4 +109,4 @@ export async function deactivateCategory(id, { adminId } = {}) {
     .lean();
   if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
   return category;
-}
+};

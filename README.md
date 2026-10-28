@@ -41,15 +41,13 @@ Mở `.env` và cấu hình:
 ```powershell
 npm start
 npm test
-curl.exe http://localhost:5000/api/health
 ```
 
 `npm run dev` tự khởi động lại bằng nodemon. `npm start` chạy Node trực tiếp. Server kết nối Redis khi có REDIS_URL, sau đó MongoDB trước khi mở cổng; lỗi kết nối sẽ kết thúc với mã lỗi. Ctrl+C hoặc SIGTERM đóng HTTP server, Redis và MongoDB.
 
 ## API hiện có
 
-- `GET /api/health`: HTTP 200, `{"status":"ok","database":"connected"}` khi Mongoose báo đã kết nối.
-- Khi mất kết nối: HTTP 503, `{"status":"unavailable","database":"disconnected"}`. Việc phát hiện mất kết nối phụ thuộc cơ chế theo dõi của MongoDB driver.
+- Đã bỏ endpoint `GET /api/health`; server vẫn kết nối database và ghi log khởi động như trước.
 - Route không tồn tại: HTTP 404, `{"message":"Không tìm thấy đường dẫn API."}`.
 - Lỗi nội bộ: HTTP 500, `{"message":"Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."}`, không trả stack trace.
 
@@ -59,7 +57,7 @@ CORS cho phép origin được cấu hình; trình duyệt chặn đọc respons
 
 `src/app.js` tạo Express app; `src/server.js` quản lý khởi động và tắt server. Các thư mục `config`, `routes`, `controllers`, `middleware` chứa các thành phần nền tảng. `models` và `services` dành cho nghiệp vụ tiếp theo.
 
-Tests kiểm tra cấu hình, health check với trạng thái kết nối giả lập, CORS, 404, JSON không hợp lệ và bảo mật lỗi 500. Tests không yêu cầu MongoDB và không thay thế kiểm thử kết nối MongoDB thực tế.
+Tests kiểm tra cấu hình, CORS, 404, JSON không hợp lệ và bảo mật lỗi 500. Tests không yêu cầu MongoDB và không thay thế kiểm thử kết nối MongoDB thực tế.
 
 Khi khởi tạo, `npm audit` báo 3 cảnh báo mức high trong chuỗi phụ thuộc phát triển `nodemon → chokidar → braces`, chưa có bản sửa theo báo cáo npm. Các phụ thuộc production không bị báo lỗi ở lần kiểm tra này. Không chạy `npm audit fix --force` tự động; kiểm tra lại các bản cập nhật trước khi nâng cấp.
 

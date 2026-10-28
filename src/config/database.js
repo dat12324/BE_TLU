@@ -27,6 +27,3 @@ export async function disconnectDatabase() {
   await mongoose.disconnect();
 }
 
-export function isDatabaseConnected() {
-  return mongoose.connection.readyState === 1;
-}

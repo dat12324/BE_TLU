@@ -1,13 +1,10 @@
-import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import Brand from "../models/Brand.js";
 import Category from "../models/Category.js";
 import { HttpError } from "../utils/http-error.js";
-import { normalizeStringArray } from "../utils/text.js";
-import { PRODUCT_EDITABLE_FIELDS } from "../validators/product.validator.js";
-import { validateCatalogId } from "../validators/catalog.validator.js";
-
-const editableFields = new Set(PRODUCT_EDITABLE_FIELDS);
+import { normalizeName } from "../utils/text.js";
+import slugify from "slugify";
+import { normalizePagination } from "../utils/pagination.js";
 const publicFields =
   "name slug brand category shortDescription description highlights images.url images.alt images.isPrimary " +
   "technicalSpecs specifications tags ratingAverage reviewCount flags status createdAt updatedAt";
@@ -15,34 +12,8 @@ const adminFields =
   "name slug brand category shortDescription description highlights images technicalSpecs " +
   "specifications tags ratingAverage reviewCount flags status createdBy updatedBy createdAt updatedAt";
 
-function checkInput(input, adminId) {
-  // Caller phải xác thực Admin trước khi gọi service; không lấy adminId từ request body.
-  if (!mongoose.isObjectIdOrHexString(adminId))
-    throw new HttpError(400, "Vui lòng cung cấp ID quản trị viên hợp lệ.");
-  if (
-    !input ||
-    typeof input !== "object" ||
-    Array.isArray(input) ||
-    Object.keys(input).some((field) => !editableFields.has(field))
-  ) {
-    throw new HttpError(
-      400,
-      "Dữ liệu sản phẩm chứa trường không được hỗ trợ hoặc không được phép chỉnh sửa.",
-    );
-  }
-}
-
-async function persistProduct(product, session) {
-  // Bao gồm push()/sửa phần tử trực tiếp trên document trước khi lưu qua service.
-  if (product.isModified("tags")) {
-    const tags = normalizeStringArray(product.tags, true);
-    product.tags = Array.isArray(tags) ? [...new Set(tags)] : tags;
-  }
-  if (product.isModified("highlights")) {
-    product.highlights = normalizeStringArray(product.highlights);
-  }
-  await product.validate();
-  if (product.images.filter((image) => image.isPrimary).length > 1) {
+const persistProduct = async (product, session) => {
+  if (product.images?.filter((image) => image?.isPrimary).length > 1) {
     throw new HttpError(400, "Mỗi sản phẩm chỉ được có tối đa một ảnh chính.");
   }
   if (product.reviewCount === 0 && product.ratingAverage !== 0) {
@@ -72,44 +43,76 @@ async function persistProduct(product, session) {
   try {
     return await product.save({ session });
   } catch (error) {
-    if (error.code === 11000)
+    if (error.code === 11000 &&
+      (Object.hasOwn(error.keyPattern ?? {}, "slug") || Object.hasOwn(error.keyValue ?? {}, "slug")))
       throw new HttpError(409, "Đường dẫn sản phẩm đã tồn tại.");
     throw error;
   }
-}
+};
 
-// Ảnh đầu vào phải là metadata từ Image Service đã kiểm tra quyền, không phải buffer/file.
-// Service không tự upload/xóa ảnh. Chưa có Review Model để tính lại điểm đánh giá.
-export async function createProduct(input, { adminId, session } = {}) {
-  checkInput(input, adminId);
+// Ảnh đầu vào là metadata từ CloudinaryStorage đã kiểm tra quyền, không phải buffer/file.
+// Chưa có Review Model để tính lại điểm đánh giá.
+// Các trường/ID đã qua Product Validator; adminId lấy từ User đã xác thực.
+export const createProduct = async (
+  name, slug, brand, category, shortDescription, description, highlights,
+  images, technicalSpecs, specifications, tags, flags, status, adminId, session,
+) => {
+  if (slug === undefined && typeof name === "string") {
+    slug = slugify(name, { lower: true, strict: true, locale: "vi", trim: true });
+  }
+  const input = Object.fromEntries(
+    Object.entries({ name, slug, brand, category, shortDescription, description, highlights,
+      images, technicalSpecs, specifications, tags, flags, status })
+      .filter(([, value]) => value !== undefined),
+  );
   const product = new Product({ createdBy: adminId, updatedBy: adminId });
   for (const field of Object.keys(input)) product.set(field, input[field]);
   return persistProduct(product, session);
-}
+};
 
-export async function updateProduct(
+export const updateProduct = async (
   productId,
-  input,
-  { adminId, session } = {},
-) {
-  checkInput(input, adminId);
-  if (!mongoose.isObjectIdOrHexString(productId))
-    throw new HttpError(400, "Vui lòng cung cấp ID sản phẩm hợp lệ.");
+  name, slug, brand, category, shortDescription, description, highlights,
+  images, technicalSpecs, specifications, tags, flags, status, adminId, session, uploadedImages = [],
+) => {
+  if (name !== undefined && slug === undefined && typeof name === "string") {
+    slug = slugify(name, { lower: true, strict: true, locale: "vi", trim: true });
+  }
+  const input = Object.fromEntries(
+    Object.entries({ name, slug, brand, category, shortDescription, description, highlights,
+      images, technicalSpecs, specifications, tags, flags, status })
+      .filter(([, value]) => value !== undefined),
+  );
   const product = await Product.findById(productId).session(session ?? null);
   if (!product) throw new HttpError(404, "Không tìm thấy sản phẩm.");
+  const previousImages = product.images.map(image => image.toObject());
+  if (uploadedImages.length) input.images = [...(images ?? previousImages), ...uploadedImages];
+  if (input.images !== undefined) product.increment();
+  // Chỉ chạy lại setter cho mảng đã sửa trực tiếp; mảng từ input chạy setter khi set bên dưới.
+  for (const field of ["tags", "highlights"]) {
+    if (!Object.hasOwn(input, field) && product.isModified(field) && Array.isArray(product[field]))
+      product.set(field, [...product[field]]);
+  }
   for (const field of Object.keys(input)) product.set(field, input[field]);
   product.updatedBy = adminId;
   return persistProduct(product, session);
-}
+};
 
 // Query values have been type-checked by the request validator; never merge raw query objects.
-export async function listProducts(
-  { page = 1, limit = 20, search, brand, category, status } = {},
-  { admin = false } = {},
-) {
+export const listProducts = async (
+  page = 1, limit = 20, search, brand, category, status, admin = false,
+) => {
+  ({ page, limit } = normalizePagination(page, limit));
+  if (search) search = normalizeName(search);
   const filter = admin ? (status ? { status } : {}) : { status: "active" };
-  if (brand) filter.brand = brand;
-  if (category) filter.category = category;
+  for (const [field, value, Model] of [["brand", brand, Brand], ["category", category, Category]]) {
+    if (value === undefined) continue;
+    const reference = await Model.findOne({ slug: value.trim().toLowerCase() }).select("_id").lean();
+    if (!reference) {
+      return { data: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+    }
+    filter[field] = reference._id;
+  }
   if (search)
     filter.name = {
       $regex: search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
@@ -128,19 +131,13 @@ export async function listProducts(
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
-}
+};
 
-export async function getProduct(id) {
-  validateCatalogId(id, "Product");
-  const product = await Product.findById(id).select(adminFields).lean();
-  if (!product) throw new HttpError(404, "Không tìm thấy sản phẩm.");
-  return product;
-}
-
-export async function getPublicProduct(slug) {
-  const product = await Product.findOne({ slug, status: "active" })
-    .select(publicFields)
+export const getProductDetail = async (value, isAdmin = false) => {
+  const query = isAdmin ? { _id: value } : { slug: value, status: "active" };
+  const product = await Product.findOne(query)
+    .select(isAdmin ? adminFields : publicFields)
     .lean();
   if (!product) throw new HttpError(404, "Không tìm thấy sản phẩm.");
   return product;
-}
+};

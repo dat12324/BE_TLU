@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 
-export function generateAccessToken(user, config) {
+export const generateAccessToken = (user, config) => {
   return jwt.sign({ tokenVersion: user.tokenVersion ?? 0 }, config.jwtSecret, {
     algorithm: "HS256",
     subject: user._id.toString(),
@@ -8,9 +8,9 @@ export function generateAccessToken(user, config) {
     audience: "tluphone-web",
     expiresIn: config.jwtExpiresIn,
   });
-}
+};
 
-export function generateRefreshToken(user, config) {
+export const generateRefreshToken = (user, config) => {
   return jwt.sign(
     { tokenVersion: user.tokenVersion ?? 0 },
     config.jwtRefreshSecret,
@@ -22,4 +22,4 @@ export function generateRefreshToken(user, config) {
       expiresIn: config.jwtRefreshExpiresIn,
     },
   );
-}
+};

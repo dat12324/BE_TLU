@@ -1,6 +1,6 @@
 // Trả về định nghĩa trường Mongoose mới cho từng đường dẫn trong schema.
 // Giá trị tùy chọn có thể là null/undefined; số được cung cấp phải hữu hạn.
-export function numericSpec(positive = false) {
+export const numericSpec = (positive = false) => {
   return {
     type: Number,
     validate: {
@@ -12,4 +12,4 @@ export function numericSpec(positive = false) {
         : "Giá trị phải là số hữu hạn và không âm.",
     },
   };
-}
+};

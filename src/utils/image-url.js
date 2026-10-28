@@ -1,4 +1,4 @@
-export function isCloudinaryImageUrl(value) {
+export const isCloudinaryImageUrl = (value) => {
   try {
     const url = new URL(value);
     return (
@@ -12,4 +12,4 @@ export function isCloudinaryImageUrl(value) {
   } catch {
     return false;
   }
-}
+};

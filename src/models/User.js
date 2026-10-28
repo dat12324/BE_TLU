@@ -174,6 +174,6 @@ userSchema.index(
 requireDocumentSave(userSchema, "User");
 
 // Hồ sơ/địa chỉ qua User Service; mật khẩu và phân quyền qua Authentication.
-// Avatar qua Image Service đã kiểm tra quyền. Response dùng DTO; xem docs/user-security.md.
+// Avatar qua CloudinaryStorage đã kiểm tra quyền. Response dùng DTO; xem docs/user-security.md.
 const User = mongoose.models.User ?? mongoose.model("User", userSchema);
 export default User;

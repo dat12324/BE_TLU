@@ -1,21 +1,44 @@
-import { Router } from 'express';
-import { productController } from '../controllers/product.controller.js';
-import { validateProductBody, validateProductId, validateProductSlug, validateProductList } from '../validators/product.validator.js';
+import { Router } from "express";
+import {
+verifyRole,
+verifyTokenIfPresent,
+} from "../middleware/auth.middleware.js";
+import { productController } from "../controllers/product.controller.js";
+import { uploadCloud } from "../config/cloudinary.js";
+import {
+validatorCreateProduct,
+validatorUpdateProduct,
+validatorUpdateProductStatus,
+validateProductQuery,
+} from "../validators/product.validator.js";
 
-export function createProductRouter() {
-  const router = Router();
-  router.get('/', validateProductList(), productController.listPublic);
-  router.get('/:slug', validateProductSlug, productController.getPublic);
-  return router;
-}
+const router = Router();
+router.get("/", verifyTokenIfPresent, validateProductQuery, productController.list);
+router.get(
+  "/getByID/:id",
+  verifyRole(["admin"]),
+  productController.getAdminProductDetail,
+);
+router.post(
+  "/",
+  verifyRole(["admin"]),
+  uploadCloud.array("images", 10),
+  validatorCreateProduct,
+  productController.create,
+);
+router.patch(
+  "/:id",
+  verifyRole(["admin"]),
+  uploadCloud.array("images", 10),
+  validatorUpdateProduct,
+  productController.update, 
+);
+router.patch(
+  "/:id/status",
+  verifyRole(["admin"]),
+  validatorUpdateProductStatus,
+  productController.update,
+);
+router.get("/:slug", productController.getProductDetail);
 
-// Mounted after authentication and verifyRole(['admin']) in the API router.
-export function createAdminProductRouter() {
-  const router = Router();
-  router.get('/', validateProductList({ admin: true }), productController.listAdmin);
-  router.get('/:id', validateProductId, productController.getAdmin);
-  router.post('/', validateProductBody(), productController.create);
-  router.patch('/:id', validateProductId, validateProductBody({ partial: true }), productController.update);
-  router.patch('/:id/status', validateProductId, validateProductBody({ statusOnly: true }), productController.update);
-  return router;
-}
+export default router;

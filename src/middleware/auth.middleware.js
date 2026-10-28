@@ -6,7 +6,7 @@ import { HttpError } from "../utils/http-error.js";
 // Reuse verified identity only when guards are stacked within this request.
 const authenticatedUser = Symbol("authenticatedUser");
 
-export async function verifyToken(req, _res, next) {
+export const verifyToken = async (req, _res, next) => {
   if (req[authenticatedUser]) {
     req.user = req[authenticatedUser];
     return next();
@@ -65,9 +65,14 @@ export async function verifyToken(req, _res, next) {
     return next(error);
   }
   return next();
-}
+};
 
-export function verifyRole(roles) {
+export const verifyTokenIfPresent = (req, res, next) => {
+  if (req.get("authorization") === undefined) return next();
+  return verifyToken(req, res, next);
+};
+
+export const verifyRole = (roles) => {
   if (
     !Array.isArray(roles) ||
     !roles.length ||
@@ -92,4 +97,4 @@ export function verifyRole(roles) {
       }
       return next();
     });
-}
+};

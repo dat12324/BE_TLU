@@ -3,7 +3,7 @@ import { BCRYPT_HASH_PATTERN } from "./validation-patterns.js";
 
 export const PASSWORD_COST = 12;
 
-export async function hashPassword(password) {
+export const hashPassword = async (password) => {
   if (typeof password !== "string" || password.length === 0) {
     throw new TypeError("Mật khẩu phải là chuỗi không rỗng.");
   }
@@ -17,9 +17,9 @@ export async function hashPassword(password) {
     throw new RangeError("Mật khẩu không được vượt quá 72 byte UTF-8.");
   }
   return bcrypt.hash(password, PASSWORD_COST);
-}
+};
 
-export async function comparePassword(password, passwordHash) {
+export const comparePassword = async (password, passwordHash) => {
   if (
     typeof password !== "string" ||
     password.length === 0 ||
@@ -30,4 +30,4 @@ export async function comparePassword(password, passwordHash) {
     return false;
   }
   return bcrypt.compare(password, passwordHash);
-}
+};

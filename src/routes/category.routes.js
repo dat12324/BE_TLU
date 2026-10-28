@@ -1,19 +1,17 @@
 import { Router } from "express";
+import { verifyRole, verifyTokenIfPresent } from "../middleware/auth.middleware.js";
 import { categoryController } from "../controllers/category.controller.js";
+import { validateCreateCategory, validateUpdateCategory } from "../validators/category.validator.js";
+import { validateCatalogQuery } from "../validators/catalog.validator.js";
+import { uploadCloud } from "../config/cloudinary.js";
 
-export function createCategoryRouter() {
-  const router = Router();
-  router.get("/", categoryController.listPublic);
-  return router;
-}
+const router = Router();
+router.get("/", verifyTokenIfPresent, validateCatalogQuery, categoryController.list);
+router.get("/:id", verifyRole(["admin"]), categoryController.get);
+router.post("/", verifyRole(["admin"]),
+  uploadCloud.single("image"),
+  validateCreateCategory, categoryController.create);
+router.patch("/:id", verifyRole(["admin"]), uploadCloud.single("image"), validateUpdateCategory, categoryController.update);
+router.delete("/:id", verifyRole(["admin"]), categoryController.deactivate);
 
-// Gắn dưới /api/admin sau middleware xác thực và verifyRole(['admin']).
-export function createAdminCategoryRouter() {
-  const router = Router();
-  router.get("/", categoryController.listAdmin);
-  router.get("/:id", categoryController.get);
-  router.post("/", categoryController.create);
-  router.patch("/:id", categoryController.update);
-  router.delete("/:id", categoryController.deactivate);
-  return router;
-}
+export default router;

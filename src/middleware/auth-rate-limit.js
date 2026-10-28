@@ -1,17 +1,19 @@
 import { HttpError } from "../utils/http-error.js";
 
-
-// Bộ giới hạn đơn giản trong một tiến trình. Đếm mọi lần thử, kể cả thành công.
-// Không tin giá trị X-Forwarded-For tùy ý; giữ tùy chọn trust proxy của Express ở trạng thái tắt.
-export function createAuthRateLimiter({
+export const createAuthRateLimiter = ({
   limit = 10,
   windowMs = 15 * 60 * 1000,
   maxEntries = 10000,
   now = Date.now,
   key = (req) => req.ip ?? req.socket.remoteAddress,
-} = {}) {
-  const attempts = new Map();
+} = {}) => {
+  const appAttempts = new WeakMap();
+  const fallbackAttempts = new Map();
   return (req, res, next) => {
+    // Router dùng chung; bộ đếm vẫn tách theo từng Express app.
+    if (req.app && !appAttempts.has(req.app))
+      appAttempts.set(req.app, new Map());
+    const attempts = req.app ? appAttempts.get(req.app) : fallbackAttempts;
     const timestamp = now();
     const identifier = key(req);
     let entry = attempts.get(identifier);
@@ -47,4 +49,4 @@ export function createAuthRateLimiter({
     }
     next();
   };
-}
+};

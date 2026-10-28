@@ -10,7 +10,7 @@ const colorKey = (value) =>
     : null;
 
 // So sánh dung lượng dạng chuỗi cũ mà không ghi lại bất kỳ giá trị RAM/ROM đã lưu nào.
-function capacityKey(value) {
+const capacityKey = (value) => {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^(\d+)\s*(GB|TB)?$/i);
@@ -18,14 +18,14 @@ function capacityKey(value) {
   const capacity =
     Number(match[1]) * (match[2]?.toUpperCase() === "TB" ? 1024 : 1);
   return Number.isSafeInteger(capacity) && capacity > 0 ? capacity : null;
-}
+};
 
 // Kiểm tra trước chỉ đọc cho thao tác ghi danh mục của quản trị viên. Chưa thêm Controller hoặc API CRUD.
 // Phép chiếu trực tiếp giữ nguyên dung lượng dạng chuỗi cũ (Mongoose sẽ ép kiểu chúng).
-export async function assertUniqueVariantCombination(
+export const assertUniqueVariantCombination = async (
   variant,
-  { session } = {},
-) {
+  session,
+) => {
   const ram = capacityKey(variant.ram);
   const storage = capacityKey(variant.storage);
   if (
@@ -65,12 +65,12 @@ export async function assertUniqueVariantCombination(
       409,
       "Biến thể có cùng sản phẩm, RAM, bộ nhớ và màu sắc đã tồn tại.",
     );
-}
+};
 
 // Mã quản trị đã được cấp quyền sau này cung cấp tài liệu chỉ chứa các chỉnh sửa được cho phép rõ ràng.
 // Thao tác ghi mới chuẩn hóa khoảng trắng bằng bộ gán hiện có của color.name;
 // chỉ mục duy nhất không phân biệt hoa/thường xử lý xung đột giữa các lần ghi danh mục mới.
-export async function saveProductVariant(variant, { session } = {}) {
+export const saveProductVariant = async (variant, session) => {
   if (!(variant instanceof ProductVariant))
     throw new TypeError("Dữ liệu phải là document biến thể sản phẩm.");
   await variant.validate();
@@ -131,7 +131,7 @@ export async function saveProductVariant(variant, { session } = {}) {
     );
   }
   if (variant.deletedAt == null)
-    await assertUniqueVariantCombination(variant, { session });
+    await assertUniqueVariantCombination(variant, session);
   const previousWhere = variant.$where;
   // Giá và giá gốc có thể được sửa đồng thời; kiểm tra trường còn lại ngay khi ghi.
   if (!variant.isNew) {
@@ -173,4 +173,4 @@ export async function saveProductVariant(variant, { session } = {}) {
   } finally {
     variant.$where = previousWhere;
   }
-}
+};

@@ -1,14 +1,5 @@
 import "dotenv/config";
 
-export function readCloudinaryConfig(env = process.env) {
-  return {
-    cloud_name: env.CLOUDINARY_CLOUD_NAME?.trim(),
-    api_key: env.CLOUDINARY_API_KEY?.trim(),
-    api_secret: env.CLOUDINARY_API_SECRET?.trim(),
-    secure: true,
-  };
-}
-
 export function loadConfig(env = process.env) {
   const mongoUri = env.MONGODB_URI?.trim();
   if (!mongoUri || !/^mongodb(?:\+srv)?:\/\/.+/.test(mongoUri)) {
@@ -46,7 +37,6 @@ export function loadConfig(env = process.env) {
     // Phần xác thực kiểm tra các giá trị này trước khi cấp/xác minh token; không ghi cấu hình vào nhật ký.
     jwtSecret: env.JWT_SECRET ?? "",
     jwtExpiresIn: env.JWT_EXPIRES_IN ?? "1d",
-    passwordResetSecret: env.PASSWORD_RESET_SECRET ?? "",
     redisUrl: env.REDIS_URL?.trim() ?? "",
     jwtRefreshSecret: env.JWT_REFRESH_SECRET ?? "",
     jwtRefreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN ?? "7d",
@@ -59,7 +49,5 @@ export function loadConfig(env = process.env) {
       pass: env.SMTP_PASS,
       from: env.SMTP_FROM?.trim(),
     },
-    // Chưa bắt buộc cho đến khi có yêu cầu thao tác với ảnh.
-    cloudinary: readCloudinaryConfig(env),
   };
 }

@@ -8,20 +8,20 @@ import { HttpError } from "../utils/http-error.js";
 const isMoney = (value) => Number.isSafeInteger(value) && value >= 0;
 const maxSafeAmount = BigInt(Number.MAX_SAFE_INTEGER);
 
-function safeAmount(value, message) {
+const safeAmount = (value, message) => {
   if (value < 0n || value > maxSafeAmount) throw new HttpError(400, message);
   return Number(value);
-}
+};
 
 // Chỉ chuẩn bị document; checkout sau này lưu cùng thao tác giữ hàng trong transaction.
 // user, discountAmount và shippingFee do backend đã xác thực/tính toán cung cấp, không lấy từ req.body.
-export async function prepareOrder(
-  input,
-  { user, discountAmount = 0, shippingFee = 0, session } = {},
-) {
+export const prepareOrder = async (
+  orderItems, shippingAddress, paymentMethod, note,
+  user, discountAmount = 0, shippingFee = 0, session,
+) => {
   if (!mongoose.isObjectIdOrHexString(user))
     throw new HttpError(400, "Vui lòng cung cấp người dùng hợp lệ.");
-  if (!input || !Array.isArray(input.items) || input.items.length === 0) {
+  if (!Array.isArray(orderItems) || orderItems.length === 0) {
     throw new HttpError(400, "Đơn hàng phải có ít nhất một sản phẩm hợp lệ.");
   }
   if (!isMoney(discountAmount) || !isMoney(shippingFee)) {
@@ -32,7 +32,7 @@ export async function prepareOrder(
   }
 
   const ids = new Set();
-  for (const item of input.items) {
+  for (const item of orderItems) {
     if (
       !item ||
       !mongoose.isObjectIdOrHexString(item.productVariant) ||
@@ -70,7 +70,7 @@ export async function prepareOrder(
   const byId = new Map(
     variants.map((variant) => [variant._id.toString(), variant]),
   );
-  const items = input.items.map((item) => {
+  const items = orderItems.map((item) => {
     const variant = byId.get(item.productVariant.toString().toLowerCase());
     if (!variant || variant.product?.status !== "active") {
       throw new HttpError(409, "Sản phẩm hoặc biến thể hiện không khả dụng.");
@@ -113,7 +113,7 @@ export async function prepareOrder(
     BigInt(subtotal) - BigInt(discountAmount) + BigInt(shippingFee),
     "Tổng thanh toán phải bằng tổng tiền hàng trừ giảm giá cộng phí vận chuyển và nằm trong phạm vi số nguyên an toàn.",
   );
-  const address = input.shippingAddress;
+  const address = shippingAddress;
   const order = new Order({
     orderCode: `TLU-${randomUUID()}`,
     user,
@@ -133,9 +133,9 @@ export async function prepareOrder(
     discountAmount,
     shippingFee,
     totalAmount,
-    paymentMethod: input.paymentMethod,
-    note: input.note,
+    paymentMethod,
+    note,
   });
   await order.validate();
   return order;
-}
+};

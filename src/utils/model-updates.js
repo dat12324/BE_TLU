@@ -1,6 +1,6 @@
 // Đăng ký trước mongoose.model(). Không chặn thao tác ghi vào collection của save.
 // Cơ chế này yêu cầu kiểm tra toàn bộ tài liệu; không kiểm soát quyền truy cập API.
-export function requireDocumentSave(schema, modelName) {
+export const requireDocumentSave = (schema, modelName) => {
   for (const operation of [
     "updateOne",
     "updateMany",
@@ -19,4 +19,4 @@ export function requireDocumentSave(schema, modelName) {
       `${modelName} không hỗ trợ bulkWrite; hãy dùng document.save() để kiểm tra dữ liệu.`,
     );
   });
-}
+};
