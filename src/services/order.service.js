@@ -58,7 +58,7 @@ export const prepareOrder = async (
     status: "active",
     deletedAt: null,
   })
-    .select("product sku ram storage color images price")
+    .select("product sku ram storage color price")
     .populate({
       path: "product",
       model: Product,
@@ -83,7 +83,6 @@ export const prepareOrder = async (
     );
     const imageUrl =
       variant.color?.image?.url ??
-      variant.images?.[0]?.url ??
       variant.product.images?.find((image) => image.isPrimary)?.url ??
       variant.product.images?.[0]?.url;
     return {

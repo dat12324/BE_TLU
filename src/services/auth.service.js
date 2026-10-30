@@ -202,13 +202,15 @@ export const authService = {
 
   async verifyAccount(email, config) {
     email = normalizeEmail(email);
-    let base;
+    let link;
     try {
-      base = new URL(config.apiBaseUrl);
+      const base = new URL(config.apiBaseUrl);
+      link = config.emailVerificationUrl ? new URL(config.emailVerificationUrl) : new URL("/api/auth/verifyMail", base);
       if (
         !["http:", "https:"].includes(base.protocol) ||
         base.username ||
-        base.password
+        base.password ||
+        !["http:", "https:"].includes(link.protocol) || link.username || link.password
       )
         throw new Error();
     } catch {
@@ -235,9 +237,10 @@ export const authService = {
     });
     if (!issued)
       return { message: "Liên kết xác thực đã được gửi đến email của bạn." };
-    const link = new URL("/api/auth/verifyMail", base);
-    link.searchParams.set("email", email);
-    link.searchParams.set("token", token);
+    const params = new URLSearchParams({ email, token });
+    // Link FE dùng fragment để token không đi vào request URL/referrer của trang.
+    if (config.emailVerificationUrl) link.hash = params.toString();
+    else link.search = params.toString();
     try {
       await transporter.sendMail({
         from: process.env.SMTP_FROM,
@@ -368,14 +371,14 @@ export const authService = {
         await client
           .multi()
           .del(otpKey)
-          .set(resetKey, resetState, { EX: 300 })
+          .set(resetKey, resetState)
           .exec();
         return true;
       },
     );
     if (!verified)
       throw new HttpError(400, "Mã xác thực không hợp lệ hoặc đã hết hạn.");
-    return { resetToken, expiresIn: 300 };
+    return { resetToken, expiresIn: null };
   },
 
   async changePassword(userId, currentPassword, newPassword, confirmPassword) {

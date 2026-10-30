@@ -43,13 +43,4 @@ export const categoryController = {
     req.uploadCommitted = true;
     res.json({ data });
   },
-  async deactivate(req, res) {
-    res.json({
-      message: "Đã vô hiệu hóa danh mục.",
-      data: await categoryService.deactivateCategory(
-        req.params.id,
-        req.user._id,
-      ),
-    });
-  },
 };

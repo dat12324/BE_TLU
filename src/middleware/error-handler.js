@@ -71,8 +71,14 @@ export const errorHandler = async (err, req, res, next) => {
     return res
       .status(err.http_code === 400 ? 415 : 502)
       .json({ message: "Tải ảnh lên dịch vụ lưu trữ thất bại." });
-  if (err instanceof mongoose.Error.CastError)
-    return res.status(400).json({ message: "Dữ liệu không hợp lệ." });
+  const isVariant = /^\/api\/product-variants(?:\/|\?|$)/.test(req.originalUrl ?? "");
+  if (err instanceof mongoose.Error.ValidationError || err instanceof mongoose.Error.CastError)
+    return res.status(400).json({ message: isVariant
+      ? "Dữ liệu biến thể sản phẩm không hợp lệ." : "Dữ liệu không hợp lệ." });
+  if (err instanceof mongoose.Error.VersionError)
+    return res.status(409).json({ message: isVariant
+      ? "Biến thể đã thay đổi. Vui lòng tải lại và thử lại."
+      : "Dữ liệu đã thay đổi. Vui lòng tải lại và thử lại." });
   if (err.code === 11000) {
     const duplicateEmail =
       Object.hasOwn(err.keyPattern ?? {}, "email") ||

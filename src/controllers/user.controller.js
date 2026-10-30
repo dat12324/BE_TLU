@@ -1,5 +1,5 @@
 import * as userService from "../services/user.service.js";
-import { toCustomerUserDTO } from "../dto/user.dto.js";
+import { toCustomerUserDTO, toAuthUserDTO } from "../dto/user.dto.js";
 import { HttpError } from "../utils/http-error.js";
 
 export const updateMyAvatar = async (req, res) => {
@@ -15,7 +15,7 @@ export const updateMyAvatar = async (req, res) => {
 
 export const userController = {
   getMe(req, res) {
-    res.json({ user: toCustomerUserDTO(req.user) });
+    res.json({ user: toAuthUserDTO(req.user) });
   },
   async updateMe(req, res) {
     const { fullName, phoneNumber, dateOfBirth, gender } = req.body;

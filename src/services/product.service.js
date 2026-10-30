@@ -12,6 +12,15 @@ const adminFields =
   "name slug brand category shortDescription description highlights images technicalSpecs " +
   "specifications tags ratingAverage reviewCount flags status createdBy updatedBy createdAt updatedAt";
 
+const assertActiveReferences = async (product, session) => {
+  const [brand, category] = await Promise.all([
+    Brand.exists({ _id: product.brand, status: "active" }).session(session ?? null),
+    Category.exists({ _id: product.category, status: "active" }).session(session ?? null),
+  ]);
+  if (!brand || !category)
+    throw new HttpError(400, "Thương hiệu và danh mục phải tồn tại và đang hoạt động.");
+};
+
 const persistProduct = async (product, session) => {
   if (product.images?.filter((image) => image?.isPrimary).length > 1) {
     throw new HttpError(400, "Mỗi sản phẩm chỉ được có tối đa một ảnh chính.");
@@ -26,19 +35,7 @@ const persistProduct = async (product, session) => {
     product.isModified("brand") ||
     product.isModified("category")
   ) {
-    const brand = await Brand.exists({
-      _id: product.brand,
-      status: "active",
-    }).session(session ?? null);
-    const category = await Category.exists({
-      _id: product.category,
-      status: "active",
-    }).session(session ?? null);
-    if (!brand || !category)
-      throw new HttpError(
-        400,
-        "Thương hiệu và danh mục phải tồn tại và đang hoạt động.",
-      );
+    await assertActiveReferences(product, session);
   }
   try {
     return await product.save({ session });
@@ -85,8 +82,26 @@ export const updateProduct = async (
   );
   const product = await Product.findById(productId).session(session ?? null);
   if (!product) throw new HttpError(404, "Không tìm thấy sản phẩm.");
+  // Đổi trạng thái không sửa hoặc kiểm tra lại ảnh và dữ liệu import cũ.
+  if (Object.keys(input).length === 1 && status !== undefined && !uploadedImages.length) {
+    if (status === "active") await assertActiveReferences(product, session);
+    const updated = await Product.findOneAndUpdate(
+      { _id: product._id, brand: product.brand, category: product.category },
+      { $set: { status, updatedBy: adminId }, $inc: { __v: 1 } },
+      { returnDocument: "after", runValidators: true, session },
+    );
+    if (!updated) throw new HttpError(409, "Sản phẩm đã thay đổi. Vui lòng tải lại và thử lại.");
+    return updated;
+  }
   const previousImages = product.images.map(image => image.toObject());
-  if (uploadedImages.length) input.images = [...(images ?? previousImages), ...uploadedImages];
+  if (uploadedImages.length) {
+    const retained = images ?? previousImages;
+    input.images = [
+      ...(uploadedImages.some(image => image.isPrimary)
+        ? retained.map(image => ({ ...image, isPrimary: false })) : retained),
+      ...uploadedImages,
+    ];
+  }
   if (input.images !== undefined) product.increment();
   // Chỉ chạy lại setter cho mảng đã sửa trực tiếp; mảng từ input chạy setter khi set bên dưới.
   for (const field of ["tags", "highlights"]) {

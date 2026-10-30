@@ -28,7 +28,7 @@ const avatarSchema = new mongoose.Schema(
       },
     },
   },
-  { _id: false, strict: "throw" },
+  { _id: false },
 );
 
 function normalizeAvatar(value) {
@@ -51,7 +51,6 @@ export const addressSchema = new mongoose.Schema(
     city: { type: String, required: true, trim: true },
     isDefault: { type: Boolean, default: false },
   },
-  { strict: "throw" },
 );
 
 function removeSecrets(_doc, ret) {
@@ -133,7 +132,6 @@ export const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    strict: "throw",
     // Tạo chỉ mục đã khai báo khi kết nối ở cả môi trường phát triển và triển khai thực tế.
     autoIndex: true,
     autoCreate: false,

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import slugify from "slugify";
 import { normalizePagination } from "../utils/pagination.js";
 import Brand from "../models/Brand.js";
+import Product from "../models/Product.js";
 import { validateCatalogId } from "../validators/catalog.validator.js";
 import { HttpError } from "../utils/http-error.js";
 
@@ -56,6 +57,14 @@ export const listBrands = async (page = 1, limit = 20, status, admin = false) =>
       .lean(),
     Brand.countDocuments(filter),
   ]);
+  if (admin && data.length) {
+    const counts = await Product.aggregate([
+      { $match: { brand: { $in: data.map(brand => brand._id) } } },
+      { $group: { _id: "$brand", count: { $sum: 1 } } },
+    ]);
+    const byBrand = new Map(counts.map(item => [item._id.toString(), item.count]));
+    for (const brand of data) brand.productCount = byBrand.get(brand._id.toString()) ?? 0;
+  }
   return {
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
@@ -88,6 +97,16 @@ export const updateBrand = async (id, name, slug, description, logo, status, adm
   );
   validateCatalogId(id, "thương hiệu");
   validateCatalogId(adminId, "quản trị viên");
+  // Đổi trạng thái không cần kiểm tra lại ảnh/dữ liệu cũ không được chỉnh sửa.
+  if (Object.keys(data).length === 1 && status !== undefined) {
+    const brand = await Brand.findByIdAndUpdate(
+      id,
+      { $set: { status, updatedBy: adminId } },
+      { returnDocument: "after", runValidators: true },
+    ).select(adminFields).lean();
+    if (!brand) throw new HttpError(404, "Không tìm thấy thương hiệu.");
+    return brand;
+  }
   const brand = await Brand.findById(id);
   if (!brand) throw new HttpError(404, "Không tìm thấy thương hiệu.");
   for (const field of Object.keys(data)) brand.set(field, data[field]);
@@ -96,17 +115,3 @@ export const updateBrand = async (id, name, slug, description, logo, status, adm
   return saveBrand(brand);
 };
 
-// Xóa mềm bằng status hiện có; không xóa Product hoặc ảnh Cloudinary.
-export const deactivateBrand = async (id, adminId) => {
-  validateCatalogId(id, "thương hiệu");
-  validateCatalogId(adminId, "quản trị viên");
-  const brand = await Brand.findByIdAndUpdate(
-    id,
-    { $set: { status: "inactive", updatedBy: adminId } },
-    { returnDocument: "after", runValidators: true },
-  )
-    .select(adminFields)
-    .lean();
-  if (!brand) throw new HttpError(404, "Không tìm thấy thương hiệu.");
-  return brand;
-};

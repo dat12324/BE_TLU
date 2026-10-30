@@ -69,7 +69,7 @@ export const productController = {
       status,
     } = req.body;
     const uploaded =
-      req.files?.map((file) => ({ url: file.path, publicId: file.filename })) ??
+      req.files?.map((file, index) => ({ url: file.path, publicId: file.filename, isPrimary: index === req.body.primaryImageIndex })) ??
       [];
     await saveResponse(
       res,
@@ -114,7 +114,7 @@ export const productController = {
       status,
     } = req.body;
     const uploaded =
-      req.files?.map((file) => ({ url: file.path, publicId: file.filename })) ??
+      req.files?.map((file, index) => ({ url: file.path, publicId: file.filename, isPrimary: index === req.body.primaryImageIndex })) ??
       [];
     await saveResponse(
       res,

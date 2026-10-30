@@ -42,7 +42,7 @@ export const authController = {
       );
   },
   async login(req, res) {
-    const { email, password } = req.body;
+    const { email, password, remember } = req.body;
     const { refreshToken, ...result } = await authService.login(
       email,
       password,
@@ -51,7 +51,9 @@ export const authController = {
     if (refreshToken)
       res.cookie("refreshToken", refreshToken, {
         ...cookieOptions(req),
-        expires: new Date(jwt.decode(refreshToken).exp * 1000),
+        ...(remember === false ? {} : {
+          expires: new Date(jwt.decode(refreshToken).exp * 1000),
+        }),
       });
     res.json(result);
   },

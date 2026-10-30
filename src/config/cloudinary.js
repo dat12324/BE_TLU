@@ -36,6 +36,7 @@ const storage = new CloudinaryStorage({
       req.params.imageType ??
       {
         products: "product",
+        "product-variants": "variant",
         brands: "brand",
         categories: "category",
         users: "avatar",

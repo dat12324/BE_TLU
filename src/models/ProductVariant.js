@@ -2,12 +2,19 @@ import mongoose from "mongoose";
 import { normalizeName } from "../utils/text.js";
 import { getInventoryStatus } from "../utils/inventory.js";
 import { createImageSchema } from "../schemas/image.schema.js";
+import { isCloudinaryImageUrl, isCellphonesImageUrl } from "../utils/image-url.js";
 
 const embeddedOptions = { _id: false };
 const imageSchema = createImageSchema({
-  urlValidationMessage: "Ảnh phải sử dụng URL Cloudinary qua HTTPS.",
+  validateCloudinaryUrl: false,
 });
-imageSchema.set("strict", true);
+imageSchema.path("url").validate(
+  value => isCloudinaryImageUrl(value) || isCellphonesImageUrl(value),
+  "Ảnh phải sử dụng URL HTTPS của Cloudinary hoặc ảnh sản phẩm CellphoneS.",
+);
+imageSchema.path("publicId").required(function () {
+  return !isCellphonesImageUrl(this.url);
+});
 
 const colorSchema = new mongoose.Schema(
   {
@@ -58,7 +65,6 @@ export const productVariantSchema = new mongoose.Schema(
       },
     },
     color: { type: colorSchema, required: true },
-    images: { type: [imageSchema], default: [] },
     price: {
       type: Number,
       required: true,

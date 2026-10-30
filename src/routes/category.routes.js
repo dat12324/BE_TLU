@@ -12,6 +12,5 @@ router.post("/", verifyRole(["admin"]),
   uploadCloud.single("image"),
   validateCreateCategory, categoryController.create);
 router.patch("/:id", verifyRole(["admin"]), uploadCloud.single("image"), validateUpdateCategory, categoryController.update);
-router.delete("/:id", verifyRole(["admin"]), categoryController.deactivate);
 
 export default router;

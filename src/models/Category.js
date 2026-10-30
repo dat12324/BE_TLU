@@ -33,7 +33,6 @@ export const categorySchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    strict: "throw",
     autoIndex: true,
     autoCreate: false,
   },

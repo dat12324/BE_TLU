@@ -33,6 +33,5 @@ router.patch(
   validateUpdateBrand,
   brandController.update,
 );
-router.delete("/:id", verifyRole(["admin"]), brandController.deactivate);
 
 export default router;

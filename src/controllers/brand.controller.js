@@ -43,10 +43,4 @@ export const brandController = {
     req.uploadCommitted = true;
     res.json({ data });
   },
-  async deactivate(req, res) {
-    res.json({
-      message: "Đã vô hiệu hóa thương hiệu.",
-      data: await brandService.deactivateBrand(req.params.id, req.user._id),
-    });
-  },
 };

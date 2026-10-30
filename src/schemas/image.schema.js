@@ -22,5 +22,5 @@ export function createImageSchema({
   };
   if (includeAlt) fields.alt = { type: String, trim: true };
   if (includeIsPrimary) fields.isPrimary = { type: Boolean, default: false };
-  return new mongoose.Schema(fields, { _id: false, strict: "throw" });
+  return new mongoose.Schema(fields, { _id: false });
 }

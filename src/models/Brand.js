@@ -51,7 +51,6 @@ export const brandSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    strict: "throw",
     autoIndex: true,
     autoCreate: false,
   },

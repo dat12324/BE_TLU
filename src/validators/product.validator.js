@@ -30,12 +30,21 @@ const productFields = [
       (value, { req }) =>
         (Object.keys(value).length > 0 || req.files?.length > 0) &&
         Object.keys(value).every((key) =>
-          PRODUCT_EDITABLE_FIELDS.includes(key),
+          PRODUCT_EDITABLE_FIELDS.includes(key) || key === "primaryImageIndex",
         ),
     )
     .withMessage(
       "Dữ liệu sản phẩm rỗng hoặc chứa trường không được phép chỉnh sửa",
     ),
+  check("primaryImageIndex")
+    .optional()
+    .custom((value, { req }) =>
+      /^(0|[1-9]\d*)$/.test(String(value)) &&
+      Number.isSafeInteger(Number(value)) &&
+      Number(value) < (req.files?.length ?? 0),
+    )
+    .withMessage("Ảnh chính mới phải nằm trong danh sách ảnh tải lên.")
+    .toInt(),
   check("name")
     .optional()
     .isString()

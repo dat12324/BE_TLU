@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import slugify from "slugify";
 import { normalizePagination } from "../utils/pagination.js";
 import Category from "../models/Category.js";
+import Product from "../models/Product.js";
 import { validateCatalogId } from "../validators/catalog.validator.js";
 import { HttpError } from "../utils/http-error.js";
 
@@ -56,6 +57,14 @@ export const listCategories = async (page = 1, limit = 20, status, admin = false
       .lean(),
     Category.countDocuments(filter),
   ]);
+  if (admin && data.length) {
+    const counts = await Product.aggregate([
+      { $match: { category: { $in: data.map(category => category._id) } } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+    ]);
+    const byCategory = new Map(counts.map(item => [item._id.toString(), item.count]));
+    for (const category of data) category.productCount = byCategory.get(category._id.toString()) ?? 0;
+  }
   return {
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
@@ -88,6 +97,16 @@ export const updateCategory = async (id, name, slug, description, image, status,
   );
   validateCatalogId(id, "danh mục");
   validateCatalogId(adminId, "quản trị viên");
+  // Đổi trạng thái không cần kiểm tra lại ảnh/dữ liệu cũ không được chỉnh sửa.
+  if (Object.keys(data).length === 1 && status !== undefined) {
+    const category = await Category.findByIdAndUpdate(
+      id,
+      { $set: { status, updatedBy: adminId } },
+      { returnDocument: "after", runValidators: true },
+    ).select(adminFields).lean();
+    if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
+    return category;
+  }
   const category = await Category.findById(id);
   if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
   for (const field of Object.keys(data)) category.set(field, data[field]);
@@ -96,17 +115,3 @@ export const updateCategory = async (id, name, slug, description, image, status,
   return saveCategory(category);
 };
 
-// Xóa mềm bằng status hiện có; không làm mất tham chiếu từ Product.
-export const deactivateCategory = async (id, adminId) => {
-  validateCatalogId(id, "danh mục");
-  validateCatalogId(adminId, "quản trị viên");
-  const category = await Category.findByIdAndUpdate(
-    id,
-    { $set: { status: "inactive", updatedBy: adminId } },
-    { returnDocument: "after", runValidators: true },
-  )
-    .select(adminFields)
-    .lean();
-  if (!category) throw new HttpError(404, "Không tìm thấy danh mục.");
-  return category;
-};

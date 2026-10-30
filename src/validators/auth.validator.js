@@ -72,6 +72,10 @@ export const validateChangePassword = [
 ];
 
 export const validateLogin = [
+  body("remember")
+    .optional()
+    .custom(value => typeof value === "boolean")
+    .withMessage("Ghi nhớ đăng nhập phải là boolean."),
   body("email", "Vui lòng nhập địa chỉ email hợp lệ.")
     .isString()
     .bail()

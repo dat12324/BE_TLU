@@ -10,7 +10,6 @@ const imageSchema = createImageSchema({
   includeAlt: true,
   includeIsPrimary: true,
 });
-imageSchema.set("strict", true);
 
 const technicalSpecsSchema = new mongoose.Schema(
   {
