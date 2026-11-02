@@ -62,3 +62,15 @@ Tests kiểm tra cấu hình, CORS, 404, JSON không hợp lệ và bảo mật 
 Khi khởi tạo, `npm audit` báo 3 cảnh báo mức high trong chuỗi phụ thuộc phát triển `nodemon → chokidar → braces`, chưa có bản sửa theo báo cáo npm. Các phụ thuộc production không bị báo lỗi ở lần kiểm tra này. Không chạy `npm audit fix --force` tự động; kiểm tra lại các bản cập nhật trước khi nâng cấp.
 
 FE giữ nguyên. Auth có xác thực email qua liên kết, quên mật khẩu OTP 5 chữ số và refresh cookie theo BĐS; xem [cấu hình và cách test](docs/authentication.md). Register không tự gửi email; gọi verifyAccount/resend-verification sau register. Chưa chặn đăng nhập vì chưa xác thực email, không có 2FA. Không thay đổi các module bán hàng trong đợt Redis này.
+
+## Bộ lọc sản phẩm cho trang chủ
+
+`GET /api/products` hỗ trợ `isFeatured`, `isNew`, `isHotDeal` nhận `true`/`false` và `sort=rating_desc`.
+Khuyến mãi gồm sản phẩm được đánh dấu hoặc có SKU đang hoạt động, chưa xóa, với giá gốc lớn hơn giá bán.
+Các bộ lọc chạy trước phân trang; response và quy tắc chỉ hiển thị sản phẩm active cho khách hàng được giữ nguyên.
+
+```http
+GET /api/products?isHotDeal=true&page=1&limit=5
+GET /api/products?isFeatured=true&sort=rating_desc&page=1&limit=8
+GET /api/products?isNew=true&sort=newest&page=1&limit=4
+```

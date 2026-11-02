@@ -267,6 +267,28 @@ export const validatorUpdateProductStatus = [
 ];
 
 export const validateProductQuery = [
+  query("sort").optional().isString().bail()
+    .isIn(["newest", "popular", "price_asc", "price_desc", "rating_desc"])
+    .withMessage("Cách sắp xếp sản phẩm không hợp lệ."),
+  query(["isFeatured", "isNew", "isHotDeal"]).optional()
+    .custom(value => value === "true" || value === "false")
+    .withMessage("Bộ lọc sản phẩm phải là true hoặc false."),
+  query(["minPrice", "maxPrice"]).optional()
+    .custom(value => typeof value === "string" && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)))
+    .withMessage("Giá lọc phải là số nguyên không âm."),
+  query("maxPrice").optional().custom((value, { req }) =>
+    req.query.minPrice === undefined || Number(value) >= Number(req.query.minPrice))
+    .withMessage("Giá tối đa phải lớn hơn hoặc bằng giá tối thiểu."),
+  query(["ram", "storage"]).optional()
+    .custom(value => typeof value === "string" && value.split(",").length <= 20 &&
+      value.split(",").every(item => /^\d+$/.test(item) && Number.isSafeInteger(Number(item)) && Number(item) > 0))
+    .withMessage("RAM/ROM phải là số GB nguyên dương, phân cách bằng dấu phẩy khi chọn nhiều giá trị."),
+  query("color").optional().isString().bail()
+    .custom(value => normalizeName(value).length > 0 && normalizeName(value).length <= 100)
+    .withMessage("Tên màu không hợp lệ."),
+  query("inStock").optional()
+    .custom(value => value === "true" || value === "false")
+    .withMessage("inStock phải là true hoặc false."),
   query(["brand", "category"])
     .optional()
     .isString()

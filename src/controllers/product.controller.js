@@ -30,7 +30,7 @@ const saveResponse = async (res, operation, status = 200) => {
 export const productController = {
   async list(req, res) {
     const admin = req.user?.role === "admin";
-    const { page, limit, search, brand, category } = req.query;
+    const { page, limit, search, brand, category, sort, minPrice, maxPrice, ram, storage, color, inStock, isFeatured, isNew, isHotDeal } = req.query;
     const status = admin ? req.query.status : "active";
     res.json(
       await productService.listProducts(
@@ -41,6 +41,7 @@ export const productController = {
         category,
         status,
         admin,
+        { sort, minPrice, maxPrice, ram, storage, color, inStock, isFeatured, isNew, isHotDeal },
       ),
     );
   },

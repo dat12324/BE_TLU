@@ -1,4 +1,5 @@
 import Product from "../models/Product.js";
+import ProductVariant from "../models/ProductVariant.js";
 import Brand from "../models/Brand.js";
 import Category from "../models/Category.js";
 import { HttpError } from "../utils/http-error.js";
@@ -116,10 +117,14 @@ export const updateProduct = async (
 // Query values have been type-checked by the request validator; never merge raw query objects.
 export const listProducts = async (
   page = 1, limit = 20, search, brand, category, status, admin = false,
+  { sort = "newest", minPrice, maxPrice, ram, storage, color, inStock, isFeatured, isNew, isHotDeal } = {},
 ) => {
   ({ page, limit } = normalizePagination(page, limit));
   if (search) search = normalizeName(search);
   const filter = admin ? (status ? { status } : {}) : { status: "active" };
+  for (const [field, value] of [["isFeatured", isFeatured], ["isNew", isNew]]) {
+    if (value !== undefined) filter[`flags.${field}`] = String(value) === "true" ? true : { $ne: true };
+  }
   for (const [field, value, Model] of [["brand", brand, Brand], ["category", category, Category]]) {
     if (value === undefined) continue;
     const reference = await Model.findOne({ slug: value.trim().toLowerCase() }).select("_id").lean();
@@ -133,15 +138,102 @@ export const listProducts = async (
       $regex: search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       $options: "i",
     };
-  const [data, total] = await Promise.all([
-    Product.find(filter)
-      .select(admin ? adminFields : publicFields)
-      .sort({ createdAt: -1, _id: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean(),
-    Product.countDocuments(filter),
+  // All SKU conditions belong to the same lookup, before Product pagination.
+  const skuFilter = {
+    status: "active", deletedAt: null,
+    price: { $type: "number", $gte: 0, $lte: Number.MAX_SAFE_INTEGER, $mod: [1, 0] },
+  };
+  if (minPrice !== undefined) skuFilter.price.$gte = Number(minPrice);
+  // Price ranges on the storefront use an exclusive upper bound.
+  if (maxPrice !== undefined) skuFilter.price.$lt = Number(maxPrice);
+  for (const [field, value] of [["ram", ram], ["storage", storage]]) {
+    if (value === undefined) continue;
+    const values = String(value).split(",").map(Number);
+    // Read legacy imported GB/TB strings as well as current numeric GB values.
+    skuFilter[field] = { $in: values.flatMap(number => [
+      number, new RegExp(`^${number}\\s*(?:GB)?$`, "i"),
+      ...(number % 1024 === 0 ? [new RegExp(`^${number / 1024}\\s*TB$`, "i")] : []),
+    ]) };
+  }
+  if (color !== undefined) {
+    skuFilter["color.name"] = {
+      $regex: `^\\s*${normalizeName(color).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")}\\s*$`,
+      $options: "i",
+    };
+  }
+  const availableStock = { $cond: [
+    { $and: [{ $isNumber: "$stock" }, { $isNumber: "$reservedStock" }] },
+    { $cond: [
+      { $and: [
+        { $gte: ["$stock", 0] }, { $lte: ["$stock", Number.MAX_SAFE_INTEGER] },
+        { $gte: ["$reservedStock", 0] }, { $lte: ["$reservedStock", "$stock"] },
+        { $eq: [{ $mod: ["$stock", 1] }, 0] },
+        { $eq: [{ $mod: ["$reservedStock", 1] }, 0] },
+      ] },
+      { $subtract: ["$stock", "$reservedStock"] }, null,
+    ] }, null,
+  ] };
+  const stockFilter = inStock === undefined ? [] : [{ $match: {
+    availableStock: String(inStock) === "true" ? { $gt: 0 } : 0,
+  } }];
+  const needsSku = [minPrice, maxPrice, ram, storage, color, inStock].some(value => value !== undefined);
+  const ordering = sort === "price_asc" || sort === "price_desc"
+    ? { hasPrice: -1, price: sort === "price_asc" ? 1 : -1, _id: -1 }
+    : sort === "popular"
+      ? { "flags.isFeatured": -1, reviewCount: -1, ratingAverage: -1, createdAt: -1, _id: -1 }
+      : sort === "rating_desc"
+        ? { ratingAverage: -1, createdAt: -1, _id: -1 }
+      : { createdAt: -1, _id: -1 };
+  const projection = Object.fromEntries((admin ? adminFields : publicFields).split(" ").filter(Boolean).map(field => [field, 1]));
+  const [result] = await Product.aggregate([
+    { $match: filter },
+    { $lookup: {
+      from: ProductVariant.collection.name, localField: "_id", foreignField: "product",
+      pipeline: [
+        { $match: skuFilter },
+        { $set: { availableStock } },
+        ...stockFilter,
+        { $sort: { price: 1, _id: 1 } },
+        { $project: {
+          product: 1, sku: 1, ram: 1, storage: 1, "color.name": 1, "color.code": 1,
+          "color.image.url": 1, price: 1, compareAtPrice: { $ifNull: ["$compareAtPrice", null] },
+          isDefault: 1, status: 1, availableStock: 1,
+        } },
+      ], as: "skus",
+    } },
+    ...(needsSku ? [{ $match: { "skus.0": { $exists: true } } }] : []),
+    { $set: {
+      price: { $ifNull: [{ $arrayElemAt: ["$skus.price", 0] }, null] },
+      compareAtPrice: { $ifNull: [{ $arrayElemAt: ["$skus.compareAtPrice", 0] }, null] },
+      hasPrice: { $gt: [{ $size: "$skus" }, 0] },
+    } },
+    // Khuyến mãi: được đánh dấu hoặc có SKU hợp lệ đang giảm giá.
+    ...(isHotDeal === undefined ? [] : [{ $match: { $expr: { $eq: [
+      { $or: [
+        { $eq: ["$flags.isHotDeal", true] },
+        { $anyElementTrue: [{ $map: {
+          input: "$skus", as: "sku", in: { $gt: ["$$sku.compareAtPrice", "$$sku.price"] },
+        } }] },
+      ] }, String(isHotDeal) === "true",
+    ] } } }]),
+    { $sort: ordering },
+    { $facet: {
+      data: [
+        { $skip: (page - 1) * limit }, { $limit: limit },
+        ...[["brand", Brand], ["category", Category]].flatMap(([field, Model]) => [
+          { $lookup: {
+            from: Model.collection.name, localField: field, foreignField: "_id",
+            pipeline: [{ $project: { name: 1, slug: 1 } }], as: `${field}Info`,
+          } },
+          { $set: { [`${field}Info`]: { $arrayElemAt: [`$${field}Info`, 0] } } },
+        ]),
+        { $project: { ...projection, price: 1, compareAtPrice: 1, skus: 1, brandInfo: 1, categoryInfo: 1 } },
+      ],
+      count: [{ $count: "total" }],
+    } },
   ]);
+  const data = result?.data ?? [];
+  const total = result?.count[0]?.total ?? 0;
   return {
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },

@@ -102,7 +102,6 @@ export const authController = {
       newPassword,
       confirmPassword,
     );
-    res.clearCookie("refreshToken", cookieOptions(req));
     res.json(result);
   },
   logout(req, res) {
