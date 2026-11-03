@@ -7,6 +7,14 @@ import {
   PHONE_PATTERN,
 } from "../utils/validation-patterns.js";
 
+export const validateGoogleLogin = [
+  body("credential", "Thông tin đăng nhập Google không hợp lệ.")
+    .isString().bail().isLength({ min: 1, max: 16384 }),
+  body("remember", "Ghi nhớ đăng nhập phải là boolean.")
+    .optional().custom(value => typeof value === "boolean"),
+  validateRequest,
+];
+
 export const validateRegister = [
   body("fullName", "Họ tên là bắt buộc và không được vượt quá 200 ký tự.")
     .customSanitizer(normalizeName)

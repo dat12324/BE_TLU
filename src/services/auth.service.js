@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import { OAuth2Client } from "google-auth-library";
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import User from "../models/User.js";
@@ -29,6 +30,7 @@ const refreshAudience = "tluphone-refresh";
 const loadUser = (email) =>
   User.findOne({ email }).select("+passwordHash +googleId +tokenVersion");
 let dummyHash;
+const googleClient = new OAuth2Client();
 
 // Chỉ lưu nếu tài khoản vẫn đáp ứng điều kiện đã kiểm tra.
 const saveUser = async (user, conditions) => {
@@ -159,6 +161,75 @@ export const authService = {
         "Đăng nhập thất bại quá nhiều lần. Vui lòng thử lại sau.",
       );
     await cache.delete(attemptsKey);
+    return {
+      accessToken: generateAccessToken(user, config),
+      tokenType: "Bearer",
+      expiresIn: config.jwtExpiresIn,
+      user: toAuthUserDTO(user),
+      refreshToken: generateRefreshToken(user, config),
+    };
+  },
+
+  async googleLogin(credential, config) {
+    requireJwtConfig(config);
+    if (typeof credential !== "string" || !credential || credential.length > 16384)
+      throw new HttpError(400, "Thông tin đăng nhập Google không hợp lệ.");
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: config.googleClientId,
+      });
+      payload = ticket.getPayload();
+    } catch (error) {
+      if (["ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(error.code) || error.response?.status >= 500)
+        throw new HttpError(503, "Không thể kết nối Google. Vui lòng thử lại.");
+      throw new HttpError(401, "Thông tin đăng nhập Google không hợp lệ hoặc đã hết hạn.");
+    }
+    if (typeof payload?.sub !== "string" || !payload.sub ||
+      typeof payload.email !== "string" || !EMAIL_PATTERN.test(payload.email) || payload.email_verified !== true)
+      throw new HttpError(401, "Tài khoản Google chưa có email được xác minh hợp lệ.");
+
+    const googleId = payload.sub;
+    const email = payload.email.trim().toLowerCase();
+    let user = await User.findOne({ googleId }).select("+googleId +tokenVersion");
+    if (!user) {
+      user = await User.findOne({ email }).select("+googleId +tokenVersion");
+      if (user) {
+        if (user.isActive !== true)
+          throw new HttpError(401, "Tài khoản không khả dụng. Vui lòng liên hệ quản trị viên.");
+        user.googleId = googleId;
+        if (!(await saveUser(user, { googleId: null })))
+          throw new HttpError(409, "Tài khoản đã thay đổi. Vui lòng đăng nhập Google lại.");
+      } else {
+        const emailVerified = email.endsWith("@gmail.com") || Boolean(payload.hd);
+        user = new User({
+          fullName: typeof payload.name === "string" && payload.name.trim()
+            ? payload.name.trim().slice(0, 200) : email.split("@")[0],
+          email,
+          googleId,
+          role: "user",
+          emailVerified,
+          ...(emailVerified ? { emailVerifiedAt: new Date() } : {}),
+          ...(typeof payload.picture === "string" && payload.picture.startsWith("https://")
+            ? { avatar: { url: payload.picture, provider: "google" } } : {}),
+        });
+        await user.save();
+      }
+    }
+    if (user.isActive !== true)
+      throw new HttpError(401, "Tài khoản không khả dụng. Vui lòng liên hệ quản trị viên.");
+    if (typeof payload.picture === "string" && payload.picture.startsWith("https://") &&
+      (!user.avatar || user.avatar.provider === "google") && user.avatar?.url !== payload.picture) {
+      const previousAvatar = user.avatar
+        ? { "avatar.url": user.avatar.url, "avatar.provider": "google" }
+        : { avatar: null };
+      user.avatar = { url: payload.picture, provider: "google" };
+      // Không ghi đè nếu người dùng vừa tải ảnh riêng lên trong lúc đăng nhập.
+      if (!(await saveUser(user, previousAvatar)))
+        throw new HttpError(409, "Ảnh đại diện đã thay đổi. Vui lòng đăng nhập Google lại.");
+    }
     return {
       accessToken: generateAccessToken(user, config),
       tokenType: "Bearer",
@@ -426,6 +497,7 @@ export const authService = {
 export const createAuthService = (config) => ({
   ...authService,
   login: (email, password) => authService.login(email, password, config),
+  googleLogin: (credential) => authService.googleLogin(credential, config),
   refreshToken: (token) => authService.refreshToken(token, config),
   verifyAccount: (email) => authService.verifyAccount(email, config),
 });

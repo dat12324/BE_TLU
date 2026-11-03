@@ -5,6 +5,7 @@ import { createAuthRateLimiter } from "../middleware/auth-rate-limit.js";
 import {
   validateRegister,
   validateLogin,
+  validateGoogleLogin,
   validateChangePassword,
 } from "../validators/auth.validator.js";
 
@@ -27,6 +28,12 @@ router.post(
 );
 const emailKey = (req) => typeof req.body?.email === "string"
   ? req.body.email.trim().toLowerCase() : req.ip;
+router.post(
+  "/google",
+  createAuthRateLimiter({ limit: 10 }),
+  validateGoogleLogin,
+  controller.googleLogin,
+);
 router.post(
   "/forgotPassword",
   createAuthRateLimiter({

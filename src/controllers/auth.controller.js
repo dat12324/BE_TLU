@@ -58,6 +58,24 @@ export const authController = {
     res.json(result);
   },
 
+  async googleLogin(req, res) {
+    checkOrigin(req);
+    if (req.headers.origin !== req.app.locals.authConfig.clientOrigin)
+      throw new HttpError(403, "Bạn không có quyền truy cập.");
+    const { credential, remember } = req.body;
+    const { refreshToken, ...result } = await authService.googleLogin(
+      credential,
+      req.app.locals.authConfig,
+    );
+    res.cookie("refreshToken", refreshToken, {
+      ...cookieOptions(req),
+      ...(remember === false ? {} : {
+        expires: new Date(jwt.decode(refreshToken).exp * 1000),
+      }),
+    });
+    res.json(result);
+  },
+
   async refreshToken(req, res) {
     checkOrigin(req);
     const cookie = req.headers.cookie

@@ -40,6 +40,7 @@ export function loadConfig(env = process.env) {
     redisUrl: env.REDIS_URL?.trim() ?? "",
     jwtRefreshSecret: env.JWT_REFRESH_SECRET ?? "",
     jwtRefreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN ?? "7d",
+    googleClientId: env.GOOGLE_CLIENT_ID?.trim() ?? "",
     apiBaseUrl: env.API_BASE_URL?.trim() ?? `http://localhost:${port}`,
     emailVerificationUrl: env.EMAIL_VERIFICATION_URL?.trim() ?? "",
     smtp: {
