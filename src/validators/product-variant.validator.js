@@ -1,4 +1,4 @@
-import { body, query, validationResult } from "express-validator";
+import { body, validationResult } from "express-validator";
 import { HttpError } from "../utils/http-error.js";
 import { validateRequest } from "../middleware/validate-request.js";
 
@@ -19,42 +19,37 @@ const objectFields = (allowed) =>
     .withMessage("Dữ liệu phải là object.")
     .bail()
     .custom(
-      (value, { req }) =>
-        (Object.keys(value).length > 0 || Object.values(req.files ?? {}).flat().length > 0) &&
+      (value) =>
         Object.keys(value).every((key) => allowed.includes(key)),
     )
-    .withMessage("Dữ liệu rỗng hoặc chứa trường không được phép chỉnh sửa.");
+    .withMessage("Dữ liệu chứa trường không được phép chỉnh sửa.");
 const numberFields = [
-  "ram",
-  "storage",
   "price",
   "compareAtPrice",
   "stock",
   "lowStockThreshold",
 ];
 const formFields = [
-  body(["color", ...numberFields, "isDefault"])
+  body(["ram", "storage"]).customSanitizer(value => typeof value === "string" && value.trim() === "" ? null : value),
+  body(["color", "ram", "storage", ...numberFields, "isDefault"])
     .if((value, { req }) => req.is("multipart/form-data") && typeof value === "string")
     .custom(value => { try { JSON.parse(value); return true; } catch { return false; } })
     .withMessage("Màu, ảnh, số và boolean trong form phải là JSON hợp lệ.").bail()
     .customSanitizer(value => JSON.parse(value)),
-  body("color.image").custom((value, { req }) => !req.files?.colorImage?.length || value === undefined)
-    .withMessage("Không gửi đồng thời color.image và file colorImage."),
 ];
 const rules = [
   body("sku")
     .optional()
     .isString()
     .bail()
-    .trim()
-    .notEmpty()
+    .notEmpty({ ignore_whitespace: true })
     .withMessage("SKU không được để trống."),
   body(numberFields)
     .optional({ values: "null" })
     .custom((value) => Number.isSafeInteger(value) && value >= 0)
-    .withMessage("Giá, dung lượng và tồn kho phải là số nguyên không âm."),
+    .withMessage("Giá và tồn kho phải là số nguyên không âm."),
   body(["ram", "storage"])
-    .optional()
+    .optional({ values: "null" })
     .custom((value) => Number.isSafeInteger(value) && value > 0)
     .withMessage("RAM và bộ nhớ phải là số nguyên dương (GB)."),
   body("isDefault")
@@ -81,22 +76,17 @@ const rules = [
     .optional()
     .isString()
     .bail()
-    .trim()
-    .notEmpty()
+    .notEmpty({ ignore_whitespace: true })
     .withMessage("Thông tin màu không hợp lệ."),
   body("color.image")
-    .optional()
-    .if((value, { path }) => path !== "color.image" || value !== null)
+    .optional({ values: "null" })
     .isObject({ strict: true })
     .bail()
     .custom((value) =>
       Object.keys(value).every((key) => ["url", "publicId"].includes(key)),
     )
     .withMessage("Ảnh chỉ gồm url và publicId."),
-  body([
-    "color.image.url",
-    "color.image.publicId",
-  ])
+  body("color.image.url")
     .optional()
     .isString()
     .withMessage("Thông tin ảnh phải là chuỗi."),
@@ -106,7 +96,7 @@ const createVariantRules = [
   ...formFields,
   objectFields(["product", "stock", ...fields]),
   body("product").isMongoId().withMessage("ID sản phẩm không hợp lệ."),
-  body(["ram", "storage", "color.name", "price"])
+  body(["color.name", "price"])
     .exists()
     .withMessage("Thiếu thông tin biến thể bắt buộc."),
   ...rules,
@@ -168,33 +158,5 @@ export const validateVariantStock = [
       (value) => value === null || (Number.isSafeInteger(value) && value >= 0),
     )
     .withMessage("Cần gửi expectedStock là tồn kho hiện tại hoặc null."),
-  validateRequest,
-];
-export const validateVariantQuery = [
-  query(["product", "status", "ram", "storage", "color"])
-    .optional()
-    .custom((value) => typeof value === "string")
-    .withMessage("Tham số lọc phải là chuỗi."),
-  query("product")
-    .optional()
-    .isMongoId()
-    .withMessage("ID sản phẩm không hợp lệ."),
-  query("status")
-    .optional()
-    .isIn(["active", "inactive"])
-    .withMessage("Trạng thái không hợp lệ."),
-  query(["ram", "storage"])
-    .optional()
-    .isInt({ min: 1, max: Number.MAX_SAFE_INTEGER })
-    .withMessage("RAM/bộ nhớ không hợp lệ."),
-  query("color")
-    .optional()
-    .isString()
-    .bail()
-    .trim()
-    .notEmpty()
-    .isLength({ max: 100 })
-    .withMessage("Màu không hợp lệ."),
-  // page/limit dùng normalizePagination như Product; query không sử dụng được bỏ qua.
   validateRequest,
 ];

@@ -6,6 +6,7 @@ import { HttpError } from "../utils/http-error.js";
 import { normalizeName } from "../utils/text.js";
 import slugify from "slugify";
 import { normalizePagination } from "../utils/pagination.js";
+import { flashSalePriceStages } from "./flash-sale.service.js";
 const publicFields =
   "name slug brand category shortDescription description highlights images.url images.alt images.isPrimary " +
   "technicalSpecs specifications tags ratingAverage reviewCount flags status createdAt updatedAt";
@@ -25,9 +26,6 @@ const assertActiveReferences = async (product, session) => {
 const persistProduct = async (product, session) => {
   if (product.images?.filter((image) => image?.isPrimary).length > 1) {
     throw new HttpError(400, "Mỗi sản phẩm chỉ được có tối đa một ảnh chính.");
-  }
-  if (product.reviewCount === 0 && product.ratingAverage !== 0) {
-    throw new HttpError(400, "Điểm đánh giá phải bằng 0 khi chưa có đánh giá.");
   }
   // Allow hiding a product even if its existing Brand/Category has been deactivated.
   if (
@@ -114,7 +112,7 @@ export const updateProduct = async (
   return persistProduct(product, session);
 };
 
-// Query values have been type-checked by the request validator; never merge raw query objects.
+// Chỉ dùng các bộ lọc được khai báo, không trộn trực tiếp req.query vào truy vấn.
 export const listProducts = async (
   page = 1, limit = 20, search, brand, category, status, admin = false,
   { sort = "newest", minPrice, maxPrice, ram, storage, color, inStock, isFeatured, isNew, isHotDeal } = {},
@@ -143,9 +141,10 @@ export const listProducts = async (
     status: "active", deletedAt: null,
     price: { $type: "number", $gte: 0, $lte: Number.MAX_SAFE_INTEGER, $mod: [1, 0] },
   };
-  if (minPrice !== undefined) skuFilter.price.$gte = Number(minPrice);
-  // Price ranges on the storefront use an exclusive upper bound.
-  if (maxPrice !== undefined) skuFilter.price.$lt = Number(maxPrice);
+  const priceFilter = {};
+  if (minPrice !== undefined) priceFilter.$gte = Number(minPrice);
+  // Lọc theo giá thực tế sau khi áp dụng Flash Sale.
+  if (maxPrice !== undefined) priceFilter.$lt = Number(maxPrice);
   for (const [field, value] of [["ram", ram], ["storage", storage]]) {
     if (value === undefined) continue;
     const values = String(value).split(",").map(Number);
@@ -191,6 +190,8 @@ export const listProducts = async (
       from: ProductVariant.collection.name, localField: "_id", foreignField: "product",
       pipeline: [
         { $match: skuFilter },
+        ...flashSalePriceStages(),
+        ...(Object.keys(priceFilter).length ? [{ $match: { price: priceFilter } }] : []),
         { $set: { availableStock } },
         ...stockFilter,
         { $sort: { price: 1, _id: 1 } },
@@ -198,6 +199,7 @@ export const listProducts = async (
           product: 1, sku: 1, ram: 1, storage: 1, "color.name": 1, "color.code": 1,
           "color.image.url": 1, price: 1, compareAtPrice: { $ifNull: ["$compareAtPrice", null] },
           isDefault: 1, status: 1, availableStock: 1,
+          flashSaleId: 1, flashSaleEndsAt: 1,
         } },
       ], as: "skus",
     } },

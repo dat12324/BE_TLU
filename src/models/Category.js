@@ -23,7 +23,7 @@ export const categorySchema = new mongoose.Schema(
     },
     description: { type: String, trim: true },
     image: {
-      type: createImageSchema({ validateCloudinaryUrl: false }),
+      type: createImageSchema(),
       default: undefined,
     },
     status: { type: String, enum: ["active", "inactive"], default: "active" },

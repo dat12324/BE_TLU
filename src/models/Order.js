@@ -1,19 +1,12 @@
 import mongoose from "mongoose";
 
 const embeddedOptions = { _id: false };
-const isMoney = (value) => Number.isSafeInteger(value) && value >= 0;
-const isPositiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 
 function moneyField(defaultValue) {
   return {
     type: Number,
     required: true,
     default: defaultValue,
-    validate: {
-      validator: isMoney,
-      message:
-        "Số tiền phải là số nguyên không âm trong phạm vi an toàn, tính bằng VND.",
-    },
   };
 }
 
@@ -32,32 +25,11 @@ export const orderItemSchema = new mongoose.Schema(
     // Snapshot sản phẩm do service cung cấp.
     productName: { type: String, required: true, trim: true },
     sku: { type: String, required: true, trim: true },
-    ram: {
-      type: Number,
-      required: true,
-      validate: {
-        validator: isPositiveInteger,
-        message: "RAM phải là số nguyên dương trong phạm vi an toàn.",
-      },
-    },
-    storage: {
-      type: Number,
-      required: true,
-      validate: {
-        validator: isPositiveInteger,
-        message: "Bộ nhớ phải là số nguyên dương trong phạm vi an toàn.",
-      },
-    },
+    ram: { type: Number },
+    storage: { type: Number },
     color: { type: String, required: true, trim: true },
     imageUrl: { type: String, trim: true },
-    quantity: {
-      type: Number,
-      required: true,
-      validate: {
-        validator: isPositiveInteger,
-        message: "Số lượng phải là số nguyên dương trong phạm vi an toàn.",
-      },
-    },
+    quantity: { type: Number, required: true,},
     unitPrice: moneyField(),
     subtotal: moneyField(),
   },
@@ -84,11 +56,6 @@ export const orderSchema = new mongoose.Schema(
     items: {
       type: [orderItemSchema],
       required: true,
-      validate: {
-        validator: (items) =>
-          Array.isArray(items) && items.length > 0 && items.every(Boolean),
-        message: "Đơn hàng phải có ít nhất một sản phẩm hợp lệ.",
-      },
     },
     shippingAddress: { type: shippingAddressSchema, required: true },
     subtotal: moneyField(),
@@ -113,13 +80,9 @@ export const orderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    autoIndex: true,
-    autoCreate: true,
   },
 );
 
-// Service xử lý duplicate key 11000 khi tạo mã đơn hàng.
-orderSchema.index({ orderCode: 1 }, { unique: true });
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 

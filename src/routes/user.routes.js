@@ -8,7 +8,6 @@ import {
 } from "../controllers/user.controller.js";
 import {
   validateUserBody,
-  validateUserList,
 } from "../validators/user.validator.js";
 
 const router = Router();
@@ -60,7 +59,6 @@ router.patch(
 router.get(
   "/",
   verifyRole(["admin"]),
-  validateUserList,
   userController.listAdmin,
 );
 router.get("/:id", verifyRole(["admin"]), userController.getAdmin);

@@ -21,6 +21,7 @@ const technicalSpecsSchema = new mongoose.Schema(
     cameraMainMp: numericSpec(), // MP
     operatingSystem: { type: String, trim: true },
     network: { type: String, trim: true },
+    colors: { type: String, trim: true },
     wirelessCharging: { type: Boolean },
   },
   embeddedOptions,
@@ -83,10 +84,6 @@ export const productSchema = new mongoose.Schema(
     images: {
       type: [imageSchema],
       default: [],
-      validate: {
-        validator: (images) => Array.isArray(images) && images.every(Boolean),
-        message: "Ảnh sản phẩm phải là một mảng các ảnh hợp lệ.",
-      },
     },
     technicalSpecs: { type: technicalSpecsSchema, default: undefined },
     specifications: { type: [specificationGroupSchema], default: [] },
@@ -105,19 +102,11 @@ export const productSchema = new mongoose.Schema(
       default: 0,
       min: 0,
       max: 5,
-      validate: {
-        validator: (value) => Number.isFinite(value),
-        message: "Điểm đánh giá phải là số hữu hạn.",
-      },
     },
     reviewCount: {
       type: Number,
       default: 0,
-      validate: {
-        validator: (value) => Number.isSafeInteger(value) && value >= 0,
-        message:
-          "Số lượt đánh giá phải là số nguyên không âm trong phạm vi an toàn.",
-      },
+      min: 0,
     },
     // Đường dẫn lồng nhau tránh xung đột với Document.isNew của Mongoose.
     flags: {

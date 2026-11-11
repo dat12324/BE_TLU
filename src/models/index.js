@@ -8,3 +8,5 @@ export { default as ProductVariant } from "./ProductVariant.js";
 export { default as Cart } from "./Cart.js";
 export { default as Order } from "./Order.js";
 export { default as InventoryReservation } from "./InventoryReservation.js";
+export { default as Banner } from "./Banner.js";
+export { default as FlashSale } from "./FlashSale.js";

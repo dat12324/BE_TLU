@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { body, query } from "express-validator";
 import { validateRequest } from "../middleware/validate-request.js";
-import { normalizeName } from "../utils/text.js";
 import { SLUG_PATTERN } from "../utils/validation-patterns.js";
 import { HttpError } from "../utils/http-error.js";
 
@@ -17,8 +16,7 @@ export const validateCatalogInput = (imageField, partial = false) => [
     .withMessage("Dữ liệu phải là object.")
     .bail()
     .custom(
-      (value, { req }) =>
-        (Object.keys(value).length > 0 || Boolean(req.file)) &&
+      (value) =>
         Object.keys(value).every((key) =>
           ["name", "slug", "description", "status", imageField].includes(key),
         ),
@@ -51,65 +49,55 @@ export const validateCatalogInput = (imageField, partial = false) => [
     ? [
         body("name")
           .exists()
-          .withMessage("name là bắt buộc và phải là chuỗi không rỗng."),
+          .withMessage("name là bắt buộc."),
         body("slug").customSanitizer((value) =>
           typeof value === "string" && !value.trim() ? undefined : value,
         ),
       ]
     : []),
-  body("name", "name là bắt buộc và phải là chuỗi không rỗng.")
+  body("name", "name là bắt buộc.")
     .optional()
     .isString()
     .bail()
-    .customSanitizer(normalizeName)
-    .notEmpty()
-    .withMessage("name là bắt buộc và phải là chuỗi không rỗng."),
+    .notEmpty({ ignore_whitespace: true })
+    .withMessage("name là bắt buộc."),
   body("slug", "Đường dẫn không hợp lệ.")
     .optional()
     .isString()
     .bail()
-    .trim()
-    .toLowerCase()
-    .matches(SLUG_PATTERN)
+    .custom((value) => SLUG_PATTERN.test(value.trim().toLowerCase()))
     .withMessage(
       "Đường dẫn chỉ được chứa chữ cái, chữ số và dấu gạch nối đơn giữa các phần.",
     ),
   body("description")
     .optional()
     .isString()
-    .withMessage("description phải là chuỗi.")
-    .bail()
-    .trim(),
+    .withMessage("description phải là chuỗi."),
   body("status", "Trạng thái không hợp lệ.")
     .optional()
     .isString()
     .bail()
     .isIn(["active", "inactive"])
     .withMessage("Trạng thái không hợp lệ."),
-  body(imageField, `${imageField} phải chứa url và publicId.`)
+  body(imageField, `${imageField} phải là object ảnh.`)
     .optional({ values: "null" })
     .isObject({ strict: true })
     .bail()
     .custom((value) =>
       Object.keys(value).every((key) => ["url", "publicId"].includes(key)),
     )
-    .withMessage(`${imageField} phải chứa url và publicId.`),
+    .withMessage(`${imageField} chỉ được chứa url và publicId.`),
   body(`${imageField}.url`, "URL ảnh không hợp lệ.")
     .if((_value, { req }) => req.body?.[imageField] != null)
     .isString()
     .bail()
-    .trim()
-    .notEmpty()
+    .notEmpty({ ignore_whitespace: true })
     .bail()
     .custom((value) => ["http:", "https:"].includes(new URL(value).protocol))
     .withMessage("URL ảnh phải sử dụng HTTP hoặc HTTPS."),
-  body(`${imageField}.publicId`, `${imageField} phải chứa url và publicId.`)
-    .if((_value, { req }) => req.body?.[imageField] != null)
-    .isString()
-    .bail()
-    .trim()
-    .notEmpty()
-    .withMessage(`${imageField} phải chứa url và publicId.`),
+  body(`${imageField}.publicId`, "publicId phải là chuỗi nếu được cung cấp.")
+    .optional({ values: "null" })
+    .isString(),
   validateRequest,
 ];
 

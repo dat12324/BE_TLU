@@ -32,35 +32,3 @@ export const validateUploadFields = [
     ),
   validateRequest,
 ];
-
-export const validateDeleteImage = [
-  body()
-    .isObject({ strict: true })
-    .withMessage(
-      "Chỉ được cung cấp publicId hợp lệ của ảnh thuộc hệ thống TLUPhone.",
-    )
-    .bail()
-    .custom(
-      (value) =>
-        Object.keys(value).length === 1 && Object.hasOwn(value, "publicId"),
-    )
-    .withMessage(
-      "Chỉ được cung cấp publicId hợp lệ của ảnh thuộc hệ thống TLUPhone.",
-    ),
-  body(
-    "publicId",
-    "Chỉ được cung cấp publicId hợp lệ của ảnh thuộc hệ thống TLUPhone.",
-  )
-    .isString()
-    .bail()
-    .matches(MANAGED_IMAGE_ID_PATTERN)
-    .withMessage(
-      "Chỉ được cung cấp publicId hợp lệ của ảnh thuộc hệ thống TLUPhone.",
-    ),
-  query()
-    .custom((value) => Object.keys(value).length === 0)
-    .withMessage(
-      "Chỉ được cung cấp publicId hợp lệ của ảnh thuộc hệ thống TLUPhone.",
-    ),
-  validateRequest,
-];

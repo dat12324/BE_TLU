@@ -24,7 +24,7 @@ export const brandSchema = new mongoose.Schema(
     },
 
     logo: {
-      type: createImageSchema({ validateCloudinaryUrl: false }),
+      type: createImageSchema(),
       default: undefined,
     },
 

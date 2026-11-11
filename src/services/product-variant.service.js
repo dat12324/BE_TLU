@@ -6,6 +6,7 @@ import { normalizeName } from "../utils/text.js";
 import { HttpError } from "../utils/http-error.js";
 import { normalizePagination } from "../utils/pagination.js";
 import { getInventoryStatus } from "../utils/inventory.js";
+import { applyFlashSalePrices } from "./flash-sale.service.js";
 
 const colorKey = (value) =>
   typeof value === "string"
@@ -31,10 +32,8 @@ export const assertUniqueVariantCombination = async (variant, session) => {
   if (
     !mongoose.isObjectIdOrHexString(variant.product) ||
     !colorKey(variant.color?.name) ||
-    !Number.isSafeInteger(ram) ||
-    ram <= 0 ||
-    !Number.isSafeInteger(storage) ||
-    storage <= 0
+    (variant.ram != null && variant.ram !== "" && (!Number.isSafeInteger(ram) || ram <= 0)) ||
+    (variant.storage != null && variant.storage !== "" && (!Number.isSafeInteger(storage) || storage <= 0))
   ) {
     throw new HttpError(
       400,
@@ -124,7 +123,8 @@ export const listProductVariants = async (
     ProductVariant.countDocuments(filter),
   ]);
   return {
-    data: documents.map((item) => variantResponse(item, admin)),
+    data: admin ? documents.map(item => variantResponse(item, true))
+      : await applyFlashSalePrices(documents.map(item => variantResponse(item, false))),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 };
@@ -144,7 +144,8 @@ export const getProductVariant = async (id, admin = false) => {
       !(await Product.exists({ _id: variant.product, status: "active" })))
   )
     throw new HttpError(404, "Không tìm thấy biến thể sản phẩm.");
-  return variantResponse(variant, admin);
+  const data = variantResponse(variant, admin);
+  return admin ? data : (await applyFlashSalePrices([data]))[0];
 };
 
 const generateSku = async (product, ram, storage, color, session) => {
@@ -156,7 +157,8 @@ const generateSku = async (product, ram, storage, color, session) => {
     const gb = capacityKey(value);
     return gb >= 1024 && gb % 1024 === 0 ? `${gb / 1024}TB` : `${gb ?? value}GB`;
   };
-  return `${name || product}-${capacity(ram)}-${capacity(storage)}-${colorName}`.toUpperCase();
+  return [name || product, ram == null || ram === "" ? null : capacity(ram), storage == null || storage === "" ? null : capacity(storage), colorName]
+    .filter(Boolean).join("-").toUpperCase();
 };
 
 export const createProductVariant = async (
@@ -341,9 +343,12 @@ export const saveProductVariant = async (variant, session) => {
       ...excludeSelf,
     }).session(session ?? null))
   ) {
-    throw new HttpError(
-      409,
-      "Sản phẩm đã có một biến thể mặc định đang hoạt động.",
+    if (!session)
+      return mongoose.connection.transaction(session => saveProductVariant(variant, session));
+    await ProductVariant.updateMany(
+      { product: variant.product, isDefault: true, status: "active", deletedAt: null, ...excludeSelf },
+      { $set: { isDefault: false, updatedBy: variant.updatedBy }, $inc: { __v: 1 } },
+      { session },
     );
   }
   if (variant.deletedAt == null)

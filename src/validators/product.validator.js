@@ -1,6 +1,5 @@
-import { body as check, query } from "express-validator";
+import { body as check} from "express-validator";
 import { validateRequest } from "../middleware/validate-request.js";
-import { normalizeName } from "../utils/text.js";
 import { SLUG_PATTERN } from "../utils/validation-patterns.js";
 
 export const PRODUCT_EDITABLE_FIELDS = [
@@ -132,6 +131,7 @@ const productFields = [
           "chipBrand",
           "operatingSystem",
           "network",
+          "colors",
           "batteryCapacity",
           "screenSize",
           "refreshRate",
@@ -146,6 +146,7 @@ const productFields = [
     "technicalSpecs.chipBrand",
     "technicalSpecs.operatingSystem",
     "technicalSpecs.network",
+    "technicalSpecs.colors",
   ])
     .optional()
     .isString()
@@ -266,53 +267,3 @@ export const validatorUpdateProductStatus = [
   validateRequest,
 ];
 
-export const validateProductQuery = [
-  query("sort").optional().isString().bail()
-    .isIn(["newest", "popular", "price_asc", "price_desc", "rating_desc"])
-    .withMessage("Cách sắp xếp sản phẩm không hợp lệ."),
-  query(["isFeatured", "isNew", "isHotDeal"]).optional()
-    .custom(value => value === "true" || value === "false")
-    .withMessage("Bộ lọc sản phẩm phải là true hoặc false."),
-  query(["minPrice", "maxPrice"]).optional()
-    .custom(value => typeof value === "string" && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)))
-    .withMessage("Giá lọc phải là số nguyên không âm."),
-  query("maxPrice").optional().custom((value, { req }) =>
-    req.query.minPrice === undefined || Number(value) >= Number(req.query.minPrice))
-    .withMessage("Giá tối đa phải lớn hơn hoặc bằng giá tối thiểu."),
-  query(["ram", "storage"]).optional()
-    .custom(value => typeof value === "string" && value.split(",").length <= 20 &&
-      value.split(",").every(item => /^\d+$/.test(item) && Number.isSafeInteger(Number(item)) && Number(item) > 0))
-    .withMessage("RAM/ROM phải là số GB nguyên dương, phân cách bằng dấu phẩy khi chọn nhiều giá trị."),
-  query("color").optional().isString().bail()
-    .custom(value => normalizeName(value).length > 0 && normalizeName(value).length <= 100)
-    .withMessage("Tên màu không hợp lệ."),
-  query("inStock").optional()
-    .custom(value => value === "true" || value === "false")
-    .withMessage("inStock phải là true hoặc false."),
-  query(["brand", "category"])
-    .optional()
-    .isString()
-    .withMessage("Slug thương hiệu hoặc danh mục không hợp lệ.")
-    .bail()
-    .custom((value) => SLUG_PATTERN.test(value.trim().toLowerCase()))
-    .withMessage("Slug thương hiệu hoặc danh mục không hợp lệ."),
-  query("search")
-    .optional()
-    .isString()
-    .withMessage("Từ khóa tìm kiếm không hợp lệ.")
-    .bail()
-    .custom(
-      (value) =>
-        normalizeName(value).length > 0 && normalizeName(value).length <= 100,
-    )
-    .withMessage("Tìm kiếm phải là chuỗi không rỗng, tối đa 100 ký tự."),
-  query("status")
-    .if((_value, { req }) => req.user?.role === "admin")
-    .optional()
-    .isString()
-    .withMessage("Trạng thái sản phẩm không hợp lệ.")
-    .bail()
-    .isIn(statuses)
-    .withMessage("Trạng thái sản phẩm không hợp lệ."),
-  validateRequest,
-];

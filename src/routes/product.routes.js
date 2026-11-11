@@ -9,11 +9,10 @@ import {
 validatorCreateProduct,
 validatorUpdateProduct,
 validatorUpdateProductStatus,
-validateProductQuery,
 } from "../validators/product.validator.js";
 
 const router = Router();
-router.get("/", verifyTokenIfPresent, validateProductQuery, productController.list);
+router.get("/", verifyTokenIfPresent, productController.list);
 router.get(
   "/getByID/:id",
   verifyRole(["admin"]),

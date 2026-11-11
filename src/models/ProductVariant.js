@@ -5,16 +5,7 @@ import { createImageSchema } from "../schemas/image.schema.js";
 import { isCloudinaryImageUrl, isCellphonesImageUrl } from "../utils/image-url.js";
 
 const embeddedOptions = { _id: false };
-const imageSchema = createImageSchema({
-  validateCloudinaryUrl: false,
-});
-imageSchema.path("url").validate(
-  value => isCloudinaryImageUrl(value) || isCellphonesImageUrl(value),
-  "Ảnh phải sử dụng URL HTTPS của Cloudinary hoặc ảnh sản phẩm CellphoneS.",
-);
-imageSchema.path("publicId").required(function () {
-  return !isCellphonesImageUrl(this.url);
-});
+const imageSchema = createImageSchema();
 
 const colorSchema = new mongoose.Schema(
   {
@@ -48,18 +39,16 @@ export const productVariantSchema = new mongoose.Schema(
     sku: { type: String, required: true, uppercase: true, trim: true },
     ram: {
       type: Number,
-      required: true,
       validate: {
-        validator: isPositiveInteger,
+        validator: value => value == null || isPositiveInteger(value),
         message:
           "RAM phải là số nguyên dương trong phạm vi an toàn, tính bằng GB.",
       },
     },
     storage: {
       type: Number,
-      required: true,
       validate: {
-        validator: isPositiveInteger,
+        validator: value => value == null || isPositiveInteger(value),
         message:
           "Bộ nhớ phải là số nguyên dương trong phạm vi an toàn, tính bằng GB.",
       },

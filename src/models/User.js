@@ -13,9 +13,6 @@ const avatarSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
-      required() {
-        return this.provider === "cloudinary";
-      },
     },
     provider: {
       type: String,

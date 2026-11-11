@@ -10,13 +10,11 @@ import {
 export const validateGoogleLogin = [
   body("credential", "Thông tin đăng nhập Google không hợp lệ.")
     .isString().bail().isLength({ min: 1, max: 16384 }),
-  body("remember", "Ghi nhớ đăng nhập phải là boolean.")
-    .optional().custom(value => typeof value === "boolean"),
   validateRequest,
 ];
 
 export const validateRegister = [
-  body("fullName", "Họ tên là bắt buộc và không được vượt quá 200 ký tự.")
+  body("fullName", "Họ tên là bắt buộc.")
     .customSanitizer(normalizeName)
     .isString()
     .bail()
@@ -28,7 +26,7 @@ export const validateRegister = [
     .bail()
     .trim()
     .toLowerCase(),
-  body("password", "Mật khẩu phải có ít nhất 8 ký tự và tối đa 72 byte UTF-8.")
+  body("password", "Mật khẩu phải có ít nhất 8 ký tự .")
     .isString()
     .bail()
     .custom(
@@ -47,7 +45,7 @@ export const validateRegister = [
     .matches(PHONE_PATTERN),
   body(
     "dateOfBirth",
-    "Ngày sinh phải hợp lệ, có định dạng YYYY-MM-DD và không được ở tương lai.",
+    "Ngày sinh phải hợp lệ.",
   )
     .optional()
     .customSanitizer((value) => (value === "" ? undefined : value))
@@ -70,7 +68,7 @@ export const validateChangePassword = [
   body("currentPassword", "Vui lòng nhập mật khẩu hiện tại hợp lệ.")
     .isString().bail().notEmpty().bail()
     .custom(value => Buffer.byteLength(value, "utf8") <= 72),
-  body("newPassword", "Mật khẩu mới phải có ít nhất 8 ký tự và tối đa 72 byte UTF-8.")
+  body("newPassword", "Mật khẩu mới phải có ít nhất 8 ký tự .")
     .isString().bail()
     .custom(value => value.length >= 8 && value.trim() &&
       Buffer.byteLength(value, "utf8") <= 72 && !BCRYPT_HASH_PATTERN.test(value)),
@@ -80,10 +78,6 @@ export const validateChangePassword = [
 ];
 
 export const validateLogin = [
-  body("remember")
-    .optional()
-    .custom(value => typeof value === "boolean")
-    .withMessage("Ghi nhớ đăng nhập phải là boolean."),
   body("email", "Vui lòng nhập địa chỉ email hợp lệ.")
     .isString()
     .bail()

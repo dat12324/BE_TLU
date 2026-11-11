@@ -79,7 +79,7 @@ router.patch(
   validateChangePassword,
   controller.changePassword,
 );
-// Có tính lũy đẳng: máy khách luôn có thể bỏ token cục bộ, kể cả khi đã hết hạn.
+
 router.post("/logout", controller.logout);
 
 export default router;
