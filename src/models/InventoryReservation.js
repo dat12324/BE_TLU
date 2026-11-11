@@ -15,11 +15,7 @@ export const inventoryReservationSchema = new mongoose.Schema(
     quantity: {
       type: Number,
       required: true,
-      validate: {
-        validator: (value) => Number.isSafeInteger(value) && value > 0,
-        message:
-          "Số lượng giữ hàng phải là số nguyên dương trong phạm vi an toàn.",
-      },
+      min: 1,
     },
     status: {
       type: String,
@@ -33,9 +29,6 @@ export const inventoryReservationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    autoIndex: true,
-    autoCreate: false,
-    optimisticConcurrency: true,
   },
 );
 
