@@ -26,8 +26,17 @@ export const validateCreateOrder = [
     .withMessage("Số lượng sản phẩm không hợp lệ."),
 
   body("paymentMethod")
+    .isString().withMessage("Vui lòng chọn phương thức thanh toán.").bail()
+    .trim().toUpperCase()
     .isIn(["COD", "VNPAY"])
     .withMessage("Vui lòng chọn phương thức thanh toán."),
+
+  body("voucherCode")
+    .optional()
+    .isString().withMessage("Mã giảm giá không hợp lệ.").bail()
+    .trim()
+    .matches(/^[A-Za-z0-9_-]{1,50}$/).withMessage("Mã giảm giá không hợp lệ.").bail()
+    .toUpperCase(),
 
   body("shippingAddress.fullName")
     .trim()

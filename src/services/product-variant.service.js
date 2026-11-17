@@ -2,27 +2,12 @@ import mongoose from "mongoose";
 import slugify from "slugify";
 import ProductVariant from "../models/ProductVariant.js";
 import Product from "../models/Product.js";
-import { normalizeName } from "../utils/text.js";
+import { normalizeName, normalizeColorName as colorKey } from "../utils/text.js";
+import { normalizeCapacity as capacityKey } from "../utils/capacity.js";
 import { HttpError } from "../utils/http-error.js";
 import { normalizePagination } from "../utils/pagination.js";
 import { getInventoryStatus } from "../utils/inventory.js";
 import { applyFlashSalePrices } from "./flash-sale.service.js";
-
-const colorKey = (value) =>
-  typeof value === "string"
-    ? normalizeName(value).toLowerCase().normalize("NFC")
-    : null;
-
-// So sánh dung lượng dạng chuỗi cũ mà không ghi lại bất kỳ giá trị RAM/ROM đã lưu nào.
-const capacityKey = (value) => {
-  if (typeof value === "number") return value;
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d+)\s*(GB|TB)?$/i);
-  if (!match) return null;
-  const capacity =
-    Number(match[1]) * (match[2]?.toUpperCase() === "TB" ? 1024 : 1);
-  return Number.isSafeInteger(capacity) && capacity > 0 ? capacity : null;
-};
 
 // Kiểm tra trước cho thao tác ghi danh mục của quản trị viên.
 // Phép chiếu trực tiếp giữ nguyên dung lượng dạng chuỗi cũ (Mongoose sẽ ép kiểu chúng).

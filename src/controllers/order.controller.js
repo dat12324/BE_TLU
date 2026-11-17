@@ -2,7 +2,7 @@ import * as service from "../services/order.service.js";
 
 export const orderController = {
   async create(req, res) {
-    res.status(201).json({ data: await service.createOrder(req.user._id, req.body) });
+    res.status(201).json({ data: await service.createOrder(req.user._id, req.body, req.ip) });
   },
   async list(req, res) {
     res.json(await service.listOrders(req.user._id, req.user.role === "admin", req.query));

@@ -4,6 +4,7 @@ verifyRole,
 verifyTokenIfPresent,
 } from "../middleware/auth.middleware.js";
 import { productController } from "../controllers/product.controller.js";
+import { reviewController } from "../controllers/review.controller.js";
 import { uploadCloud } from "../config/cloudinary.js";
 import {
 validatorCreateProduct,
@@ -12,6 +13,7 @@ validatorUpdateProductStatus,
 } from "../validators/product.validator.js";
 
 const router = Router();
+router.get("/:productId/reviews", reviewController.list);
 router.get("/", verifyTokenIfPresent, productController.list);
 router.get(
   "/getByID/:id",

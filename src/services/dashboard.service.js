@@ -1,65 +1,246 @@
+
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import ProductVariant from "../models/ProductVariant.js";
 import User from "../models/User.js";
 
-const periods = { today: "Hôm nay", "7days": "7 ngày gần nhất", "30days": "30 ngày gần nhất", month: "Tháng này" };
-const statuses = { pending: "Chờ xác nhận", confirmed: "Đã xác nhận", shipping: "Đang giao hàng", delivered: "Đã giao", cancelled: "Đã hủy" };
+const periods = {
+  today: "Hôm nay",
+  "7days": "7 ngày gần nhất",
+  "30days": "30 ngày gần nhất",
+  month: "Tháng này",
+};
+
+const statuses = {
+  pending: "Chờ xác nhận",
+  confirmed: "Đã xác nhận",
+  shipping: "Đang giao hàng",
+  delivered: "Đã giao",
+  cancelled: "Đã hủy",
+};
+
 const day = 86400000;
 const offset = 7 * 3600000;
-const dateKey = date => new Date(Number(date) + offset).toISOString().slice(0, 10);
+
+const getDateKey = (date) => {
+  return new Date(new Date(date).getTime() + offset)
+    .toISOString()
+    .slice(0, 10);
+};
+
+const getDateRange = (period, now) => {
+  const today = getDateKey(now);
+  const end = new Date(`${today}T00:00:00+07:00`);
+
+  end.setTime(end.getTime() + day);
+
+  let start;
+
+  if (period === "month") {
+    start = new Date(`${today.slice(0, 7)}-01T00:00:00+07:00`);
+  } else {
+    const days = {
+      today: 1,
+      "7days": 7,
+      "30days": 30,
+    };
+
+    start = new Date(end.getTime() - days[period] * day);
+  }
+
+  return { start, end };
+};
 
 export const getDashboard = async (period = "7days", now = new Date()) => {
-  if (!Object.hasOwn(periods, period)) period = "7days";
-  const today = dateKey(now);
-  const end = new Date(`${today}T00:00:00+07:00`);
-  end.setTime(end.getTime() + day);
-  const start = new Date(period === "month" ? `${today.slice(0, 7)}-01T00:00:00+07:00` : end.getTime() - day * ({ today: 1, "7days": 7, "30days": 30 }[period]));
+  if (!Object.hasOwn(periods, period)) {
+    period = "7days";
+  }
+
+  const { start, end } = getDateRange(period, now);
   const range = { $gte: start, $lt: end };
-  const paid = { status: "delivered", paymentStatus: "paid", deliveredAt: range };
-  const [orders, revenue, topProducts, lowStockProducts, activeProductCount, customerCount] = await Promise.all([
-    Order.aggregate([
-      { $match: { createdAt: range } },
-      { $facet: {
-        statuses: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
-        recent: [{ $sort: { createdAt: -1, _id: -1 } }, { $limit: 5 }, { $project: { code: "$orderCode", customerName: "$shippingAddress.fullName", createdAt: 1, total: "$totalAmount", status: 1 } }],
-      } },
-    ]),
-    Order.aggregate([
-      { $match: paid },
-      { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$deliveredAt", timezone: "+07:00" } }, revenue: { $sum: "$totalAmount" } } },
-    ]),
-    Order.aggregate([
-      { $match: paid }, { $unwind: "$items" },
-      { $group: { _id: "$items.product", name: { $first: "$items.productName" }, image: { $first: "$items.imageUrl" }, quantity: { $sum: "$items.quantity" }, revenue: { $sum: "$items.subtotal" } } },
-      { $sort: { quantity: -1, revenue: -1, _id: 1 } }, { $limit: 5 },
-    ]),
-    ProductVariant.aggregate([
-      { $match: { status: "active", deletedAt: null, stock: { $type: "number" } } },
-      { $set: { availableStock: { $subtract: ["$stock", { $ifNull: ["$reservedStock", 0] }] } } },
-      { $match: { $expr: { $lt: ["$availableStock", "$lowStockThreshold"] } } },
-      { $lookup: { from: Product.collection.name, localField: "product", foreignField: "_id", pipeline: [{ $match: { status: "active" } }, { $project: { name: 1, images: 1 } }], as: "product" } },
-      { $unwind: "$product" }, { $sort: { availableStock: 1, _id: 1 } }, { $limit: 10 },
-      { $project: { productName: "$product.name", image: { $ifNull: ["$color.image.url", { $arrayElemAt: ["$product.images.url", 0] }] }, sku: 1, stock: "$availableStock" } },
-    ]),
+
+  // Lấy dữ liệu
+  const [
+    orders,
+    paidOrders,
+    recentOrdersData,
+    variants,
+    activeProductCount,
+    customerCount,
+  ] = await Promise.all([
+    Order.find({ createdAt: range })
+      .select("status")
+      .lean(),
+
+    Order.find({
+      status: "delivered",
+      paymentStatus: "paid",
+      deliveredAt: range,
+    })
+      .select("deliveredAt totalAmount items")
+      .lean(),
+
+    Order.find({ createdAt: range })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(5)
+      .select("orderCode shippingAddress createdAt totalAmount status")
+      .lean(),
+
+    ProductVariant.find({
+      status: "active",
+      deletedAt: null,
+      stock: { $type: "number" },
+    })
+      .populate({
+        path: "product",
+        match: { status: "active" },
+        select: "name images",
+      })
+      .select("product sku stock reservedStock lowStockThreshold color")
+      .lean(),
+
     Product.countDocuments({ status: "active" }),
     User.countDocuments({ role: "user" }),
   ]);
-  const counts = new Map((orders[0]?.statuses || []).map(item => [item._id, item.count]));
-  const dailyRevenue = new Map(revenue.map(item => [item._id, item.revenue]));
-  const revenueSeries = [];
-  for (let time = start.getTime(); time < end.getTime(); time += day) {
-    const date = dateKey(time);
-    revenueSeries.push({ date, label: `${date.slice(8)}/${date.slice(5, 7)}`, revenue: dailyRevenue.get(date) || 0 });
+
+  // Thống kê trạng thái đơn hàng
+  const orderStatuses = Object.entries(statuses).map(([status, label]) => ({
+    status,
+    label,
+    count: orders.filter((order) => order.status === status).length,
+  }));
+
+  // Thống kê doanh thu theo ngày
+  const revenueMap = new Map();
+
+  for (const order of paidOrders) {
+    const date = getDateKey(order.deliveredAt);
+    const currentRevenue = revenueMap.get(date) || 0;
+
+    revenueMap.set(date, currentRevenue + order.totalAmount);
   }
-  const image = value => value || "/images/products/placeholder.svg";
+
+  const revenueSeries = [];
+  let totalRevenue = 0;
+
+  for (let time = start.getTime(); time < end.getTime(); time += day) {
+    const date = getDateKey(time);
+    const revenue = revenueMap.get(date) || 0;
+
+    totalRevenue += revenue;
+
+    revenueSeries.push({
+      date,
+      label: `${date.slice(8)}/${date.slice(5, 7)}`,
+      revenue,
+    });
+  }
+
+  // 5 đơn hàng gần nhất
+  const recentOrders = recentOrdersData.map((order) => ({
+    _id: order._id,
+    id: order._id,
+    code: order.orderCode,
+    customerName: order.shippingAddress?.fullName,
+    createdAt: order.createdAt,
+    total: order.totalAmount,
+    status: order.status,
+    statusLabel: statuses[order.status] || order.status,
+  }));
+
+  // Thống kê sản phẩm bán chạy
+  const productMap = new Map();
+
+  for (const order of paidOrders) {
+    for (const item of order.items || []) {
+      const productId = String(item.product);
+
+      if (!productMap.has(productId)) {
+        productMap.set(productId, {
+          _id: item.product,
+          id: item.product,
+          name: item.productName,
+          image: item.imageUrl,
+          quantity: 0,
+          revenue: 0,
+        });
+      }
+
+      const product = productMap.get(productId);
+
+      product.quantity += item.quantity;
+      product.revenue += item.subtotal;
+    }
+  }
+
+  const topProducts = [...productMap.values()]
+    .sort((a, b) => {
+      if (b.quantity !== a.quantity) {
+        return b.quantity - a.quantity;
+      }
+
+      if (b.revenue !== a.revenue) {
+        return b.revenue - a.revenue;
+      }
+
+      return String(a._id).localeCompare(String(b._id));
+    })
+    .slice(0, 5)
+    .map((product) => ({
+      ...product,
+      image: product.image || "/images/products/placeholder.svg",
+    }));
+
+  // Sản phẩm sắp hết hàng
+  const lowStockProducts = variants
+    .filter((variant) => {
+      if (!variant.product) return false;
+
+      const availableStock = variant.stock - (variant.reservedStock ?? 0);
+
+      return availableStock < variant.lowStockThreshold;
+    })
+    .map((variant) => ({
+      _id: variant._id,
+      id: variant._id,
+      productName: variant.product.name,
+      image:
+        variant.color?.image?.url ||
+        variant.product.images?.[0]?.url ||
+        "/images/products/placeholder.svg",
+      sku: variant.sku,
+      label: variant.sku,
+      stock: variant.stock - (variant.reservedStock ?? 0),
+    }))
+    .sort((a, b) => {
+      if (a.stock !== b.stock) {
+        return a.stock - b.stock;
+      }
+
+      return String(a._id).localeCompare(String(b._id));
+    })
+    .slice(0, 10);
+
   return {
-    meta: { period, periodLabel: periods[period], rangeStart: start, rangeEnd: end, referenceDate: now },
-    summary: { revenue: revenueSeries.reduce((sum, item) => sum + item.revenue, 0), orderCount: [...counts.values()].reduce((sum, count) => sum + count, 0), activeProductCount, customerCount },
+    meta: {
+      period,
+      periodLabel: periods[period],
+      rangeStart: start,
+      rangeEnd: end,
+      referenceDate: now,
+    },
+
+    summary: {
+      revenue: totalRevenue,
+      orderCount: orders.length,
+      activeProductCount,
+      customerCount,
+    },
+
     revenueSeries,
-    orderStatuses: Object.entries(statuses).map(([status, label]) => ({ status, label, count: counts.get(status) || 0 })),
-    recentOrders: (orders[0]?.recent || []).map(item => ({ ...item, id: item._id, statusLabel: statuses[item.status] || item.status })),
-    topProducts: topProducts.map(item => ({ ...item, id: item._id, image: image(item.image) })),
-    lowStockProducts: lowStockProducts.map(item => ({ ...item, id: item._id, image: image(item.image), label: item.sku })),
+    orderStatuses,
+    recentOrders,
+    topProducts,
+    lowStockProducts,
   };
 };

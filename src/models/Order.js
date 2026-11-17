@@ -60,6 +60,8 @@ export const orderSchema = new mongoose.Schema(
     shippingAddress: { type: shippingAddressSchema, required: true },
     subtotal: moneyField(),
     discountAmount: moneyField(0),
+    voucher: { type: mongoose.Schema.Types.ObjectId, ref: "Voucher" },
+    voucherCode: { type: String, trim: true },
     shippingFee: moneyField(0),
     totalAmount: moneyField(),
     paymentMethod: { type: String, enum: ["COD", "VNPAY"], required: true },

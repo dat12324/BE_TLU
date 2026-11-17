@@ -5,6 +5,9 @@ import Product from "../models/Product.js";
 import ProductVariant from "../models/ProductVariant.js";
 import InventoryReservation from "../models/InventoryReservation.js";
 import Notification from "../models/Notifications.js";
+import Voucher from "../models/Voucher.js";
+import { useVoucher } from "./voucher.service.js";
+import { createPaymentUrl } from "./payment.service.js";
 import { HttpError } from "../utils/http-error.js";
 import { normalizePagination } from "../utils/pagination.js";
 
@@ -91,13 +94,19 @@ export const prepareOrder = async (
   return order;
 };
 
-export const createOrder = async (user, { items, shippingAddress, paymentMethod, note }) => {
-  if (paymentMethod !== "COD")
-    throw new HttpError(503, "Thanh toán VNPay chưa được triển khai. Vui lòng chọn COD.");
-  return mongoose.connection.transaction(async session => {
+export const createOrder = async (user, { items, shippingAddress, paymentMethod, note, voucherCode }, ipAddress) => {
+  if (!["COD", "VNPAY"].includes(paymentMethod)) throw new HttpError(400, "Phương thức thanh toán không hợp lệ.");
+  const order = await mongoose.connection.transaction(async session => {
     const order = await prepareOrder(items, shippingAddress, paymentMethod, note, user, 0, 0, session);
+    if (voucherCode !== undefined) {
+      const applied = await useVoucher(voucherCode, order.subtotal, session);
+      order.voucher = applied.voucherId;
+      order.voucherCode = applied.code;
+      order.discountAmount = applied.discountAmount;
+    }
     order.shippingFee = order.subtotal >= 500000 ? 0 : 30000;
-    order.totalAmount = order.subtotal + order.shippingFee;
+    order.totalAmount = order.subtotal - order.discountAmount + order.shippingFee;
+    if (paymentMethod === "VNPAY") order.paymentStatus = "pending";
     for (const item of order.items) {
       const result = await ProductVariant.updateOne({
         _id: item.productVariant, status: "active", deletedAt: null, price: item.unitPrice,
@@ -110,6 +119,7 @@ export const createOrder = async (user, { items, shippingAddress, paymentMethod,
     await order.save({ session });
     await InventoryReservation.insertMany(order.items.map(item => ({
       order: order._id, productVariant: item.productVariant, quantity: item.quantity, status: "active",
+      ...(paymentMethod === "VNPAY" ? { expiresAt: new Date(Date.now() + 15 * 60000) } : {}),
     })), { session });
     await Notification.insertMany([{
       user: order.user,
@@ -119,6 +129,15 @@ export const createOrder = async (user, { items, shippingAddress, paymentMethod,
     }], { session });
     return order;
   });
+  if (paymentMethod === "COD") return order;
+  try {
+    return { ...order.toObject(), paymentUrl: await createPaymentUrl(order, ipAddress) };
+  } catch (error) {
+    // Chưa trả URL cho khách: có thể hủy an toàn nếu tạo Payment/cấu hình thất bại.
+    await Order.updateOne({ _id: order._id, paymentStatus: "pending" }, { $set: { paymentStatus: "failed" } });
+    await updateOrderStatus(order._id, user, false, "cancelled", "Không thể khởi tạo thanh toán VNPay.");
+    throw error;
+  }
 };
 
 export const listOrders = async (user, admin, { page, limit, status, paymentMethod, search } = {}) => {
@@ -168,6 +187,14 @@ export const updateOrderStatus = async (id, user, admin, status, cancelReason) =
     const current = await Order.findOne(filter).session(session).lean();
     if ((!admin && status !== "cancelled") || !transitions[current?.status]?.includes(status))
       throw new HttpError(409, "Không thể chuyển đơn hàng sang trạng thái này.");
+    if (current.paymentMethod === "VNPAY") {
+      if (status === "cancelled" && current.paymentStatus !== "failed") {
+        throw new HttpError(409, "Đơn VNPay đang chờ kết quả hoặc đã thanh toán không thể hủy bằng thao tác này.");
+      }
+      if (["shipping", "delivered"].includes(status) && current.paymentStatus !== "paid") {
+        throw new HttpError(409, "Chỉ giao hàng sau khi VNPay xác nhận thanh toán thành công.");
+      }
+    }
     const changes = { status };
     if (status === "cancelled") Object.assign(changes, {
       cancelReason: cancelReason || (admin ? "Quản trị viên hủy đơn." : "Khách hàng hủy đơn."), cancelledAt: new Date(),
@@ -178,6 +205,13 @@ export const updateOrderStatus = async (id, user, admin, status, cancelReason) =
     }, { $set: changes }, { session, returnDocument: "after", runValidators: true }).select("-__v").lean();
     if (order && (status === "cancelled" || status === "delivered"))
       await settleReservations(order, status === "delivered", session);
+    if (order && status === "cancelled" && order.voucher) {
+      await Voucher.updateOne(
+        { _id: order.voucher, usedCount: { $gt: 0 } },
+        { $inc: { usedCount: -1 } },
+        { session },
+      );
+    }
     if (order) {
       const titles = {
         confirmed: "Đơn hàng đã được xác nhận",

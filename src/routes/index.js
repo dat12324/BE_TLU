@@ -11,6 +11,10 @@ import cartRouter from './cart.routes.js';
 import orderRouter from './order.routes.js';
 import notificationRouter from './notification.routes.js';
 import dashboardRouter from './dashboard.routes.js';
+import voucherRouter from './voucher.routes.js';
+import reviewRouter from './review.routes.js';
+import paymentRouter from './payment.routes.js';
+import chatRouter from './chat.routes.js';
 
 const router = Router();
 router.use('/auth', authRouter);
@@ -25,5 +29,9 @@ router.use('/cart', cartRouter);
 router.use('/orders', orderRouter);
 router.use('/notifications', notificationRouter);
 router.use('/dashboard', dashboardRouter);
+router.use('/vouchers', voucherRouter);
+router.use('/reviews', reviewRouter);
+router.use('/payments', paymentRouter);
+router.use('/chat', chatRouter);
 
 export default router;

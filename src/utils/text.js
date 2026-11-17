@@ -4,6 +4,9 @@ export const normalizeName = (value) => {
     : value;
 };
 
+export const normalizeColorName = (value) =>
+  typeof value === "string" ? normalizeName(value).toLowerCase().normalize("NFC") : null;
+
 export const normalizeStringArray = (value, lowercase = false) => {
   if (!Array.isArray(value)) return value;
   return value

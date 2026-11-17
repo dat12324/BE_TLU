@@ -2,11 +2,7 @@ import Cart from "../models/Cart.js";
 import Product from "../models/Product.js";
 import ProductVariant from "../models/ProductVariant.js";
 import { HttpError } from "../utils/http-error.js";
-
-const availableStock = (sku) =>
-  Number.isSafeInteger(sku?.stock) && Number.isSafeInteger(sku?.reservedStock) &&
-  sku.stock >= 0 && sku.reservedStock >= 0 && sku.reservedStock <= sku.stock
-    ? sku.stock - sku.reservedStock : null;
+import { getAvailableStock } from "../utils/inventory.js";
 
 export const getCart = async (user) => {
   const cart = await Cart.findOne({ user }).lean();
@@ -21,7 +17,7 @@ export const getCart = async (user) => {
   let totalAmount = 0;
   const items = savedItems.filter(Boolean).map(item => {
     const sku = byId.get(String(item.productVariant));
-    const stock = availableStock(sku);
+    const stock = getAvailableStock(sku);
     const validQuantity = Number.isSafeInteger(item.quantity) && item.quantity > 0;
     const subtotal = validQuantity && Number.isSafeInteger(sku?.price) && sku.price >= 0
       ? sku.price * item.quantity : null;
@@ -50,7 +46,7 @@ const getAvailableSku = async (variantId, quantity) => {
     .populate({ path: "product", model: Product, select: "status" }).lean();
   if (!sku || sku.product?.status !== "active")
     throw new HttpError(404, "Sản phẩm hoặc SKU hiện không khả dụng.");
-  const stock = availableStock(sku);
+  const stock = getAvailableStock(sku);
   if (stock === null || quantity > stock)
     throw new HttpError(409, "Số lượng sản phẩm trong kho không đủ.");
   return { sku, stock };
