@@ -7,7 +7,6 @@ import { normalizeCapacity as capacityKey } from "../utils/capacity.js";
 import { HttpError } from "../utils/http-error.js";
 import { normalizePagination } from "../utils/pagination.js";
 import { getInventoryStatus } from "../utils/inventory.js";
-import { applyFlashSalePrices } from "./flash-sale.service.js";
 
 // Kiểm tra trước cho thao tác ghi danh mục của quản trị viên.
 // Phép chiếu trực tiếp giữ nguyên dung lượng dạng chuỗi cũ (Mongoose sẽ ép kiểu chúng).
@@ -108,8 +107,7 @@ export const listProductVariants = async (
     ProductVariant.countDocuments(filter),
   ]);
   return {
-    data: admin ? documents.map(item => variantResponse(item, true))
-      : await applyFlashSalePrices(documents.map(item => variantResponse(item, false))),
+    data: documents.map(item => variantResponse(item, admin)),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 };
@@ -130,7 +128,7 @@ export const getProductVariant = async (id, admin = false) => {
   )
     throw new HttpError(404, "Không tìm thấy biến thể sản phẩm.");
   const data = variantResponse(variant, admin);
-  return admin ? data : (await applyFlashSalePrices([data]))[0];
+  return data;
 };
 
 const generateSku = async (product, ram, storage, color, session) => {

@@ -107,42 +107,6 @@ FE dùng Google Identity Services; BE xác minh bằng `google-auth-library`, sa
 - Tài khoản mới có role `user`; tài khoản Google đã liên kết giữ role và trạng thái trong MongoDB.
 - Không đưa tệp client-secret JSON, mật khẩu hoặc token vào Git.
 
-## Flash Sale API
-
-Trang Admin: `/admin/flash-sales`. Một form duy nhất để chọn nhiều SKU, tìm SKU theo mã/màu/RAM/ROM, nhập % giảm và thời gian, bật/tắt rồi **Lưu thay đổi**. Không còn danh sách, tìm kiếm hay phân trang các chương trình.
-
-| Method | Endpoint | Quyền |
-| --- | --- | --- |
-| GET | `/api/flash-sales` | Công khai; token Admin nhận cấu hình để chỉnh sửa |
-| PATCH | `/api/flash-sales` | Admin: lưu hoặc bật/tắt cấu hình duy nhất |
-
-Body JSON mẫu (thay ID và ngày bằng giá trị thực):
-
-```json
-{
-  "name": "Ưu đãi cuối tuần",
-  "startAt": "2026-11-07T00:00:00+07:00",
-  "endAt": "2026-11-08T23:59:00+07:00",
-  "isEnabled": true,
-  "items": [
-    { "productVariant": "ID_SKU", "discountPercent": 10 }
-  ]
-}
-```
-
-GET trả 200 `{ data }`, `data` là một object hoặc null. Không còn query tìm kiếm/lọc/phân trang chương trình, `summary` hoặc `meta`. Endpoint `/:id` đã bỏ sau khi cập nhật FE. GET công khai và Admin đều chỉ đọc, chưa có cấu hình trả `{ data: null }`. Khi chưa tới giờ, đã hết hạn hoặc bị tắt, API công khai không trả các SKU ưu đãi.
-
-Flash Sale được lấy bằng `findOne()`. PATCH chỉ `set()` các trường cho phép rồi `save()` trên document đã có; chưa có thì trả 404. Document được tạo một lần trực tiếp trong MongoDB. Chỉ giữ GET/PATCH, không có API tạo hoặc xóa. Bản ghi cũ giữ nguyên ID. Không còn ID cố định, upsert hoặc xử lý E11000 riêng cho Flash Sale. Không migration, xóa dữ liệu hoặc thay đổi index trên Atlas.
-PATCH `{ "isEnabled": false }` để tắt. Model chỉ lưu `name`, `startAt`, `endAt`, `isEnabled`, `items` và timestamps; không lưu mô tả hoặc người tạo/người sửa cho bản ghi mới. Form FE và Validator đã bỏ trường `description`. Kiểm tra thứ tự thời gian và SKU trùng nằm trong Service.
-
-`discountPercent` là số nguyên từ 1 đến 99. Backend tính `Math.round(sku.price * (1 - discountPercent / 100))` khi đọc giá; Aggregation dùng `floor(x + 0.5)` thay vì `$round` để cùng quy tắc làm tròn. Giữ giá `compareAtPrice` đã có; khi chưa có thì dùng giá SKU trước giảm cho phần gạch ngang. FE tiếp tục tính nhãn % dựa trên giá gạch ngang này, nên có thể bao gồm cả giảm giá thường và Flash Sale. Giá SKU thay đổi thì giá Flash Sale đổi theo. API cấu hình mới không nhận `salePrice`.
-
-Backend kiểm tra thời gian, SKU không lặp, SKU/sản phẩm đang hoạt động và giá ưu đãi thấp hơn giá SKU. Cấu hình tắt được phép không có SKU. Không cần kiểm tra lịch chồng giữa các chương trình vì chỉ có một cấu hình. Giá ưu đãi có hiệu lực trong danh sách sản phẩm, lọc/sắp xếp giá, SKU công khai và bước tính tiền đơn hiện có; không ghi đè giá gốc trong MongoDB. Trang chủ lấy cấu hình qua API, không dùng Flash Sale mock.
-
-Flash Sale chỉ lưu `discountPercent`; không còn đọc giá cố định `salePrice` cũ. Kiểm tra chỉ đọc trên database cấu hình ngày 04/11/2026 ghi nhận 1 item và 0 item chỉ có giá cố định, nên đã bỏ trường tương thích khỏi Schema. `salePrice` trong response vẫn là giá tính toán/xem trước để giữ giao diện FE. Không chạy migration hoặc thay đổi dữ liệu Atlas trong lần refactor này.
-
-Flash Sale không quản lý hạn mức hoặc số lượng đã bán riêng; số lượng mua phụ thuộc tồn kho SKU thông thường. Không cần Cron Job: Backend kiểm tra `startAt <= now < endAt` khi lấy giá, hết hạn trở về giá SKU. Flash Sale hiện chỉ phục vụ hiển thị, chưa tích hợp vào Order. `prepareOrder()` dùng giá thường `ProductVariant.price` từ MongoDB, kiểm tra tồn kho, không tin giá Frontend và lưu giá vào snapshot `Order.items.unitPrice`. Vì vậy giá đơn hàng có thể khác giá Flash Sale trên giao diện. Order API đã hỗ trợ COD và giữ/trừ hàng trong transaction; Checkout FE vẫn mô phỏng, chưa nối Order API. Các trường hạn mức cũ trong MongoDB được bỏ qua, không cần migration.
-
 ## Banner API
 
 | Method | Endpoint | Quyền | Chức năng |
@@ -197,13 +161,14 @@ Thành công trả HTTP 200 `{ data: { items, totalQuantity, totalAmount } }`. M
 
 POST cộng số lượng nếu SKU đã có; PATCH đặt số lượng mới. Số lượng phải là Number nguyên dương an toàn, không vượt lượng có thể bán (`stock - reservedStock`). Thêm vào giỏ không giữ hoặc trừ hàng. Lần đầu thêm mới tạo giỏ; GET và DELETE không tự tạo giỏ. DELETE có thể gọi lại an toàn kể cả khi item không còn tồn tại.
 
-Các cập nhật dùng atomic update theo User trong JWT, không ghi đè cả mảng item khi sửa một SKU. Tồn kho được kiểm tra tại lúc xử lý request; Checkout vẫn phải kiểm tra lại và giữ/trừ hàng nhất quán. Giá là giá thường `ProductVariant.price`, chưa áp dụng Flash Sale, cùng cách tính với Order hiện tại. Không lưu snapshot giá vào Cart.
 
 Lỗi: 400 dữ liệu/ID sai; 401 chưa đăng nhập; 404 SKU không khả dụng hoặc PATCH item không có trong giỏ; 409 vượt tồn kho hoặc xung đột cập nhật.
 
 Test Thunder: đăng nhập lấy token, POST một SKU còn hàng hai lần, GET kiểm tra chỉ một dòng đã cộng số lượng; PATCH số lượng, DELETE item, sau đó DELETE toàn bộ giỏ. Dùng tài khoản khác để kiểm tra giỏ độc lập.
 
 Frontend đã nối Cart API qua `CartContext` và Axios hiện có: tải giỏ theo tài khoản, thêm SKU thực tế, cập nhật số lượng, xóa item/xóa giỏ và cập nhật badge Header. Khách cần đăng nhập; giỏ localStorage cũ không tự chuyển lên MongoDB. Lựa chọn checkbox và coupon demo chỉ là trạng thái Frontend, chưa phải tính giá/voucher đặt hàng từ Backend. Checkout mô phỏng giữ nguyên giỏ Backend, không tự xóa sau khi tạo đơn demo.
+
+Các cập nhật dùng atomic update theo User trong JWT, không ghi đè cả mảng item khi sửa một SKU. Tồn kho được kiểm tra tại lúc xử lý request; Checkout vẫn phải kiểm tra lại và giữ/trừ hàng nhất quán. Giá là giá thường `ProductVariant.price`, cùng cách tính với Order hiện tại. Không lưu snapshot giá vào Cart.
 
 ## Order API
 
@@ -236,7 +201,8 @@ Ví dụ POST:
 }
 ```
 
-`district` tùy chọn. Địa chỉ được sao chép vào Order, không phụ thuộc việc sửa sổ địa chỉ sau này. Giá/sản phẩm lấy từ MongoDB; mặc định discountAmount = 0, gửi thêm `voucherCode` để áp dụng mã giảm giá. Không áp dụng Flash Sale trong Order. Phí giao hàng 30.000đ nếu subtotal trước giảm giá dưới 500.000đ, còn lại miễn phí; các khoản này chỉ Backend tính. Chưa hỗ trợ nhận tại cửa hàng ở Order API này.
+
+`district` tùy chọn. Địa chỉ được sao chép vào Order, không phụ thuộc việc sửa sổ địa chỉ sau này. Giá/sản phẩm lấy từ MongoDB; mặc định discountAmount = 0, gửi thêm `voucherCode` để áp dụng mã giảm giá. Phí giao hàng 30.000đ nếu subtotal trước giảm giá dưới 500.000đ, còn lại miễn phí; các khoản này chỉ Backend tính. Chưa hỗ trợ nhận tại cửa hàng ở Order API này.
 
 Trạng thái: `pending → confirmed → shipping → delivered`. Cho phép hủy từ pending/confirmed, không hủy khi đang giao hoặc đã giao. Khi hủy qua endpoint trạng thái Admin có thể gửi thêm `cancelReason`. Gửi lại trạng thái đã xử lý trả 409; không trừ/giải phóng hàng lần hai. Không cho đánh dấu paid tùy ý qua request.
 

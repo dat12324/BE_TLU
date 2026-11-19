@@ -319,7 +319,6 @@ export const listProducts = async (
       product: 1, sku: 1, ram: 1, storage: 1, price: 1, isDefault: 1, status: 1,
       "color.name": 1, "color.code": 1, "color.image.url": 1, availableStock: 1,
       compareAtPrice: { $ifNull: ["$compareAtPrice", null] },
-      flashSaleId: { $literal: null }, flashSaleEndsAt: { $literal: null },
     } },
   ];
   const enrich = [
@@ -343,11 +342,17 @@ export const listProducts = async (
   ];
   const orderBy = ["price_asc", "price_desc"].includes(sort)
     ? { hasPrice: -1, price: sort === "price_asc" ? 1 : -1, createdAt: -1, _id: -1 }
+    : sort === "discount_desc" ? { discountRate: -1, createdAt: -1, _id: -1 }
     : sort === "battery_desc" ? { "technicalSpecs.batteryCapacity": -1, _id: -1 }
     : sort === "rating_desc" ? { ratingAverage: -1, createdAt: -1, _id: -1 }
     : sort === "popular" ? { "flags.isFeatured": -1, reviewCount: -1, ratingAverage: -1, createdAt: -1, _id: -1 }
     : { createdAt: -1, _id: -1 };
-  const paginationStages = [{ $sort: orderBy }, { $skip: (page - 1) * limit }, { $limit: limit }];
+  const paginationStages = [
+    ...(sort === "discount_desc" ? [{ $set: { discountRate: { $cond: [
+      { $and: [{ $gt: ["$compareAtPrice", 0] }, { $gte: ["$price", 0] }, { $gt: ["$compareAtPrice", "$price"] }] },
+      { $divide: [{ $subtract: ["$compareAtPrice", "$price"] }, "$compareAtPrice"] }, 0,
+    ] } } }] : []),
+    { $sort: orderBy }, { $skip: (page - 1) * limit }, { $limit: limit }];
   const referenceStages = [
     ...[["brand", Brand], ["category", Category]].map(([field, Model]) => ({ $lookup: {
       from: Model.collection.name, localField: field, foreignField: "_id",
@@ -365,7 +370,7 @@ export const listProducts = async (
       brandInfo: 1, categoryInfo: 1, price: 1, compareAtPrice: 1, skus: 1 } },
   ];
   // Không lọc/sắp theo SKU: cắt trang trước lookup để Home chỉ đọc SKU cần hiển thị.
-  const paginateFirst = !needsSku && isHotDeal === undefined && !["price_asc", "price_desc"].includes(sort);
+  const paginateFirst = !needsSku && isHotDeal === undefined && !["price_asc", "price_desc", "discount_desc"].includes(sort);
   const [result] = await Product.aggregate([
     { $match: filter },
     ...inventoryStages,

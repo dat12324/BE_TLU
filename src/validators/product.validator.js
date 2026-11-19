@@ -42,7 +42,6 @@ const productFields = [
       Number.isSafeInteger(Number(value)) &&
       Number(value) < (req.files?.length ?? 0),
     )
-    .withMessage("Ảnh chính mới phải nằm trong danh sách ảnh tải lên.")
     .toInt(),
   check("name")
     .optional()
@@ -83,42 +82,6 @@ const productFields = [
     .optional()
     .isArray()
     .withMessage("Dữ liệu phải là mảng"),
-  check(["tags.*", "highlights.*"])
-    .isString()
-    .withMessage("Tags và highlights phải chứa các chuỗi"),
-  check("images.*")
-    .isObject({ strict: true })
-    .withMessage("Ảnh phải là object")
-    .bail()
-    .custom((value) =>
-      Object.keys(value).every((key) =>
-        ["url", "publicId", "alt", "isPrimary"].includes(key),
-      ),
-    )
-    .withMessage("Cấu trúc ảnh không hợp lệ"),
-  check(["images.*.url", "images.*.publicId", "images.*.alt"])
-    .optional()
-    .isString()
-    .withMessage("Thông tin ảnh phải là chuỗi"),
-  check("images.*.isPrimary")
-    .optional()
-    .custom((value) => typeof value === "boolean")
-    .withMessage("isPrimary phải là boolean"),
-  check("flags")
-    .optional()
-    .isObject({ strict: true })
-    .withMessage("Flags phải là object")
-    .bail()
-    .custom((value) =>
-      Object.keys(value).every((key) =>
-        ["isFeatured", "isNew", "isHotDeal"].includes(key),
-      ),
-    )
-    .withMessage("Flags không hợp lệ"),
-  check(["flags.isFeatured", "flags.isNew", "flags.isHotDeal"])
-    .optional()
-    .custom((value) => typeof value === "boolean")
-    .withMessage("Flags phải là boolean"),
   check("technicalSpecs")
     .optional({ values: "null" })
     .isObject({ strict: true })
@@ -142,16 +105,6 @@ const productFields = [
     )
     .withMessage("Thông số kỹ thuật không hợp lệ"),
   check([
-    "technicalSpecs.chip",
-    "technicalSpecs.chipBrand",
-    "technicalSpecs.operatingSystem",
-    "technicalSpecs.network",
-    "technicalSpecs.colors",
-  ])
-    .optional()
-    .isString()
-    .withMessage("Thông số phải là chuỗi"),
-  check([
     "technicalSpecs.batteryCapacity",
     "technicalSpecs.screenSize",
     "technicalSpecs.refreshRate",
@@ -160,28 +113,6 @@ const productFields = [
     .optional({ values: "null" })
     .custom((value) => typeof value === "number")
     .withMessage("Thông số phải là số hoặc null"),
-  check("technicalSpecs.wirelessCharging")
-    .optional()
-    .custom((value) => typeof value === "boolean")
-    .withMessage("wirelessCharging phải là boolean"),
-  check("specifications.*")
-    .isObject({ strict: true })
-    .withMessage("Nhóm thông số phải là object")
-    .bail()
-    .custom((value) =>
-      Object.keys(value).every((key) =>
-        ["key", "title", "items"].includes(key),
-      ),
-    )
-    .withMessage("Nhóm thông số không hợp lệ"),
-  check(["specifications.*.key", "specifications.*.title"])
-    .optional()
-    .isString()
-    .withMessage("Nhóm thông số phải dùng chuỗi"),
-  check("specifications.*.items")
-    .optional()
-    .isArray()
-    .withMessage("Items phải là mảng"),
   check("specifications.*.items.*")
     .isObject({ strict: true })
     .withMessage("Thông số phải là object")
@@ -192,14 +123,6 @@ const productFields = [
       ),
     )
     .withMessage("Thông số không hợp lệ"),
-  check([
-    "specifications.*.items.*.key",
-    "specifications.*.items.*.label",
-    "specifications.*.items.*.value",
-  ])
-    .optional()
-    .isString()
-    .withMessage("Thông số phải dùng chuỗi"),
 ];
 
 const productFormFields = [
