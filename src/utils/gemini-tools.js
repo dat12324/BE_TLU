@@ -1,6 +1,7 @@
 import * as productService from '../services/product.service.js';
 import { HttpError } from './http-error.js';
 import { normalizeCapacity } from './capacity.js';
+import Product from '../models/Product.js';
 const prompt= `
 Tìm điện thoại tại TLUPhone theo nhu cầu và ngân sách.
 Nếu khách chỉ hỏi "chụp ảnh đẹp", "chơi game tốt" mà
@@ -10,7 +11,7 @@ Không gọi tìm kiếm với bộ lọc rỗng cho các yêu cầu
 cần tư vấn theo nhu cầu.
 `
 
-export const productFunctionDeclarations = [
+export const productTools = [
   {
     name: 'compareProducts',
     description: 'So sánh trực tiếp 2–3 điện thoại bằng dữ liệu thực tế. Truyền tên máy từ khách hoặc các sản phẩm đã giới thiệu, không tự đoán slug. Nếu tên chưa rõ, kết quả yêu cầu hỏi lại khách.',
@@ -37,6 +38,7 @@ export const productFunctionDeclarations = [
         search: { type: 'string', description: 'Tên sản phẩm, ví dụ iPhone 15.' },
         brand: { type: 'string', description: 'Slug thương hiệu, ví dụ apple, samsung, xiaomi.' },
         category: { type: 'string', description: 'Slug danh mục, ví dụ dien-thoai-thong-minh.' },
+        isNew: { type: 'boolean', description: 'Dùng true khi khách hỏi mẫu/dòng điện thoại mới hoặc mới ra mắt. Đây là flags.isNew do cửa hàng đánh dấu, không phải ngày hãng ra mắt. Dùng resultMode=list, sort=newest.' },
         tags: { type: 'string', description: 'Các tag cần có, phân cách bằng dấu phẩy: gaming (chơi game), photography (chụp ảnh), battery (pin tốt). Nhiều tag yêu cầu đáp ứng tất cả.' },
         minPrice: { type: 'integer', minimum: 0, description: 'Giá tối thiểu, VND, bao gồm mốc này.' },
         maxPrice: { type: 'integer', minimum: 1, description: 'Giá phải nhỏ hơn mốc này, VND. Nếu khách nói tối đa X, truyền X + 1.' },
@@ -46,7 +48,9 @@ export const productFunctionDeclarations = [
         inStock: { type: 'boolean', description: 'Mặc định true. false để xem SKU hết hàng khi khách yêu cầu.' },
         checkAvailability: { type: 'boolean', description: 'Dùng true khi khách hỏi một máy/phiên bản còn hàng không. Trả cả phiên bản hết hàng hoặc chưa xác định tồn kho, giữ đúng RAM/ROM/màu khách yêu cầu.' },
         sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'rating_desc', 'battery_desc'], description: 'Pin trâu/pin tốt nhất: dùng battery_desc để xếp dung lượng pin (mAh) giảm dần, limit=5; không thêm tags=battery vì sẽ bỏ sót máy pin lớn chưa có tag.' },
-        limit: { type: 'integer', minimum: 1, maximum: 10, description: 'Số sản phẩm trả về, mặc định 5.' },
+        resultMode: { type: 'string', enum: ['list', 'recommend'], description: 'Mặc định list: hiển thị các máy khớp bộ lọc. Chỉ dùng recommend khi khách yêu cầu tốt nhất, nên chọn máy nào, hoặc một số lượng cụ thể. Chơi game tốt/chụp ảnh đẹp trong tầm giá vẫn là list.' },
+        page: { type: 'integer', minimum: 1, description: 'Trang kết quả, mặc định 1. Khi khách yêu cầu xem tiếp, giữ nguyên bộ lọc và tăng trang.' },
+        limit: { type: 'integer', minimum: 1, maximum: 10, description: 'Mặc định 10. Khi liệt kê trong tầm giá, dùng 10; nếu còn kết quả thì xem trang tiếp theo.' },
       },
       additionalProperties: false,
     },
@@ -54,12 +58,33 @@ export const productFunctionDeclarations = [
 ];
 
 export const searchProducts = async (args = {}) => {
-  const { search, brand, category, tags, minPrice, maxPrice, ram, storage, color,
-    inStock = true, checkAvailability = false, sort = 'price_asc', limit = 5 } = args;
-  const result = await productService.listProducts(1, limit, search, brand, category, 'active', false,
-    { tags, minPrice, maxPrice, ram, storage, color, inStock: checkAvailability ? undefined : inStock, sort });
+  const { search, brand, category, tags, minPrice, maxPrice, ram, storage, color, isNew,
+    inStock = true, checkAvailability = false, sort = isNew ? 'newest' : 'price_asc', limit = 10,
+    page = 1, resultMode = 'list' } = args;
+  const result = await productService.listProducts(page, limit, search, brand, category, 'active', false,
+    { tags, minPrice, maxPrice, ram, storage, color, isNew, inStock: checkAvailability ? undefined : inStock,
+      sort: resultMode === 'recommend' ? 'price_desc' : sort });
+  // Tư vấn chung: ưu tiên nhóm sát giá cao nhất; trong nhóm mới xét cấu hình.
+  // Tra cứu máy cụ thể vẫn giữ các phiên bản để đối chiếu.
+  if (resultMode === 'recommend' && !search && result.data.length) {
+    const highestPrice = result.data[0].price;
+    result.data = result.data.filter(product => product.price >= highestPrice * 0.9);
+  }
+  // Chỉ lấy thêm thông số chi tiết của trang ứng viên khi cần chọn/đối chiếu máy.
+  const details = resultMode === 'recommend' && result.data.length
+    ? await Product.find({ slug: { $in: result.data.map(product => product.slug) }, status: 'active' })
+      .select('slug specifications').lean()
+    : [];
   return {
+    resultMode,
+    nextPage: resultMode === 'list' && result.pagination.page < result.pagination.totalPages
+      ? { ...args, page: result.pagination.page + 1, limit: result.pagination.limit, resultMode: 'list' }
+      : null,
     response: {
+      resultMode,
+      ...(isNew === true ? {
+        newProductsNote: 'Sản phẩm được cửa hàng đánh dấu flags.isNew=true. sort=newest sắp theo ngày thêm vào hệ thống (createdAt), không phải ngày hãng ra mắt. Không khẳng định mới nhất thị trường.',
+      } : {}),
       ...(checkAvailability ? {
         availabilityCheck: true,
         criteria: { search, ram, storage, color },
@@ -68,6 +93,14 @@ export const searchProducts = async (args = {}) => {
       data: result.data.map(product => ({
         name: product.name, slug: product.slug, brand: product.brandInfo?.name ?? null,
         technicalSpecs: product.technicalSpecs ?? {}, tags: product.tags ?? [],
+        ...(resultMode === 'recommend' ? {
+          specifications: details.find(detail => detail.slug === product.slug)?.specifications ?? [],
+        } : {}),
+        version: {
+          ram: product.skus[0]?.ram ?? null,
+          storage: product.skus[0]?.storage ?? null,
+          color: product.skus[0]?.color?.name ?? null,
+        },
         price: product.price, compareAtPrice: product.compareAtPrice,
         availableStock: product.skus[0]?.availableStock ?? null,
         ...(checkAvailability ? {
@@ -135,13 +168,13 @@ export const compareProducts = async ({ products } = {}) => {
     products: resolved.map(({ card }, index) => ({ ...card, version: comparisonInput[index].version })) };
 };
 
-// Không nhận truy vấn MongoDB hoặc quyền Admin từ Gemini.
-export const executeProductFunctionCall = async ({ name, args = {} } = {}) => {
-  const declaration = productFunctionDeclarations.find(item => item.name === name);
-  if (!declaration) throw new HttpError(400, 'Hàm tư vấn không được hỗ trợ.');
-  if (!args || typeof args !== 'object' || Array.isArray(args) ||
-      Object.keys(args).some(key => !Object.hasOwn(declaration.parametersJsonSchema.properties, key))) {
-    throw new HttpError(400, 'Tham số hàm tư vấn không hợp lệ.');
+export const executeProductTool = async ({ name, args = {} }) => {
+  switch (name) {
+    case 'searchProducts':
+      return searchProducts(args);
+    case 'compareProducts':
+      return compareProducts(args);
+    default:
+      throw new HttpError(400, 'Công cụ không được hỗ trợ.');
   }
-  return name === 'compareProducts' ? compareProducts(args) : searchProducts(args);
 };

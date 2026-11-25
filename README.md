@@ -47,7 +47,6 @@ npm test
 
 ## API hiện có
 
-- Đã bỏ endpoint `GET /api/health`; server vẫn kết nối database và ghi log khởi động như trước.
 - Route không tồn tại: HTTP 404, `{"message":"Không tìm thấy đường dẫn API."}`.
 - Lỗi nội bộ: HTTP 500, `{"message":"Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."}`, không trả stack trace.
 
@@ -74,7 +73,7 @@ Ví dụ tìm điện thoại chơi game, pin tốt, dưới 10 triệu và còn
 `GET /api/products?tags=gaming,battery&maxPrice=10000000&inStock=true&sort=price_asc&limit=5`.
 
 Gemini Function Calling: `src/utils/gemini-tools.js` xuất
-`productFunctionDeclarations` và `executeProductFunctionCall({ name, args })`.
+`productTools` và `executeProductTool({ name, args })`.
 Chỉ có `searchProducts`; luôn dùng quyền khách hàng, không ghi MongoDB.
 Tìm kiếm mặc định 5 sản phẩm còn hàng, tối đa 10; không gửi danh sách hoặc phân trang SKU.
 SKU chỉ được dùng nội bộ để lọc cấu hình, giá và tồn kho.

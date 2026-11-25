@@ -1,64 +1,19 @@
-import { gemini } from '../config/gemini.js';
-import { productFunctionDeclarations, executeProductFunctionCall } from '../utils/gemini-tools.js';
+import { gemini, CHATBOT_SYSTEM_PROMPT } from '../config/gemini.js';
+import { productTools, executeProductTool } from '../utils/gemini-tools.js';
 import { HttpError } from '../utils/http-error.js';
 
-
-const SYSTEM_PROMPT = `
-Bạn là trợ lý AI của TLUPhone, chuyên tư vấn điện thoại và
-giải đáp kiến thức công nghệ. Trả lời tiếng Việt tự nhiên,
-thân thiện, ngắn gọn như nhân viên tư vấn thực tế.
-
-1. KIẾN THỨC CÔNG NGHỆ
-- Tự giải đáp các câu hỏi chung về chip, CPU, GPU, camera,
-  màn hình, pin, Android, iOS và so sánh công nghệ.
-- Không yêu cầu tên điện thoại khi khách chỉ hỏi về chip.
-- Không cần truy vấn sản phẩm cho câu hỏi kiến thức chung.
-- Nếu thông tin chưa chắc chắn, nói rõ, không tự bịa.
-
-2. DỮ LIỆU TLUPhone
-- Khi hỏi về sản phẩm, giá, phiên bản hoặc tồn kho tại cửa hàng,
-  phải dùng Function Calling lấy dữ liệu thực tế từ Backend.
-- Dùng searchProducts để tìm kiếm và kiểm tra tồn kho;
-  compareProducts để so sánh 2–3 mẫu điện thoại.
-- Không bịa thông số, giá, tồn kho hoặc chính sách cửa hàng.
-- Không dùng lịch sử trò chuyện làm nguồn giá hoặc tồn kho hiện tại.
-
-3. TƯ VẤN SẢN PHẨM
-- Hiểu nhu cầu và ngân sách của khách trước khi tư vấn.
-- Nếu thiếu thông tin quan trọng, hỏi tối đa một câu;
-  không vừa hỏi ngân sách vừa đề xuất sản phẩm.
-- Khi đủ thông tin, tìm 3–5 sản phẩm phù hợp và giải thích
-  ngắn gọn lý do lựa chọn dựa trên dữ liệu thực tế.
-- Không khẳng định máy chụp đẹp, chơi game tốt hay pin bền
-  chỉ dựa vào MP, tên chip hoặc dung lượng mAh.
-- Với yêu cầu pin trâu nhất, dùng searchProducts với
-  sort=battery_desc, limit=5, inStock=true;
-  không tự thêm tags=battery.
-- Không tự bỏ các tiêu chí khách đã yêu cầu.
-- Nếu không có sản phẩm phù hợp, nói rõ và hỏi khách
-  có muốn thay đổi tiêu chí không.
-
-4. SO SÁNH ĐIỆN THOẠI
-- Dùng compareProducts và đối chiếu specifications,
-  technicalSpecs cùng phiên bản SKU thực tế.
-- Chỉ nhận xét dựa trên dữ liệu có căn cứ.
-- Thiếu thông số thì ghi "Chưa có thông tin".
-- Nếu needsClarification=true, hỏi lại khách.
-- Không tạo bảng Markdown vì Frontend hiển thị bảng riêng.
-- Kết luận ngắn gọn theo nhu cầu và sự đánh đổi giữa các máy.
-
-5. TỒN KHO VÀ HIỂN THỊ
-- Khi hỏi còn hàng, dùng searchProducts với
-  checkAvailability=true và bộ lọc phiên bản tương ứng.
-- Phân biệt in_stock, out_of_stock, unknown và
-  no_matching_active_variant; không đánh đồng các trạng thái.
-- Product Cards được Frontend hiển thị riêng.
-  Không lặp lại danh sách tên và giá dài dòng.
-- Hướng dẫn khách nhấn thẻ để xem chi tiết và chọn phiên bản.
-- Không thực hiện đặt hàng hoặc truy cập tài khoản.
-`;
-
-
+const selectProductsTool = {
+  name: 'selectProducts',
+  description: 'Kết thúc tìm kiếm bằng câu trả lời ngắn. Với resultMode=list, gửi slug các máy trong trang và giới thiệu danh sách chung. Với recommend, chỉ gửi slug những máy đã chọn tư vấn. Nếu cần hỏi lại, gửi slugs rỗng.',
+  parametersJsonSchema: {
+    type: 'object', required: ['reply', 'slugs'], additionalProperties: false,
+    properties: {
+      reply: { type: 'string', description: 'Nhận xét có căn cứ từ dữ liệu công cụ, nêu lý do chọn và hạn chế theo cùng tiêu chí cho mọi máy. Nếu sửa nhận xét trước, nói rõ điểm đã sửa.' },
+      slugs: { type: 'array', maxItems: 10, items: { type: 'string' },
+        description: 'Slug các máy đã chọn, theo thứ tự muốn hiển thị thẻ. Không tự tạo slug.' },
+    },
+  },
+};
 
 export const sendChatMessage = async (message, history = []) => {
   if (typeof message !== 'string' || !message.trim() || message.length > 1000 ||
@@ -77,7 +32,9 @@ export const sendChatMessage = async (message, history = []) => {
   const products = new Map();
   let comparison = null;
   let comparisonInput = null;
+  let searchResult = null;
   for (let turn = 0; turn < 3; turn += 1) {
+    const choosingProducts = products.size > 0 && !comparisonInput;
     let result;
     try {
       result = await gemini.models.generateContent({
@@ -85,7 +42,7 @@ export const sendChatMessage = async (message, history = []) => {
         contents,
         config: {
           httpOptions: { timeout: 20000 }, maxOutputTokens: 768,
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction: CHATBOT_SYSTEM_PROMPT,
           ...(comparisonInput ? {
             responseMimeType: 'application/json',
             responseJsonSchema: {
@@ -101,8 +58,12 @@ export const sendChatMessage = async (message, history = []) => {
               },
             },
           } : {
-            tools: [{ functionDeclarations: productFunctionDeclarations }],
-            toolConfig: { functionCallingConfig: { mode: turn === 2 ? 'NONE' : 'AUTO' } },
+            tools: [{ functionDeclarations: choosingProducts
+              ? [...productTools, selectProductsTool] : productTools }],
+            toolConfig: { functionCallingConfig: choosingProducts
+              ? { mode: 'ANY', allowedFunctionNames: turn === 2 ? ['selectProducts']
+                : [...productTools.map(tool => tool.name), 'selectProducts'] }
+              : { mode: turn === 2 ? 'NONE' : 'AUTO' } },
           }),
         },
       });
@@ -110,7 +71,26 @@ export const sendChatMessage = async (message, history = []) => {
       throw new HttpError(503, 'Trợ lý AI đang bận. Vui lòng thử lại sau.');
     }
     const calls = result.functionCalls ?? [];
+    if (calls.length === 1 && calls[0].name === 'selectProducts' && choosingProducts) {
+      const { reply, slugs } = calls[0].args ?? {};
+      if (typeof reply !== 'string' || !reply.trim() || !Array.isArray(slugs) || slugs.length > 10 ||
+          slugs.some(slug => typeof slug !== 'string' || !products.has(slug))) {
+        throw new HttpError(503, 'Danh sách sản phẩm tư vấn chưa hợp lệ. Vui lòng thử lại.');
+      }
+      const listing = searchResult?.resultMode === 'list' && slugs.length > 0;
+      const cards = listing ? searchResult.products
+        : [...new Set(slugs)].map(slug => products.get(slug));
+      const text = reply.trim();
+      return { reply: text, message: text, products: cards, comparison: null,
+        ...(listing && searchResult.nextPage ? {
+          nextPage: `Xem thêm điện thoại. Gọi searchProducts với đúng bộ lọc và trang tiếp theo: ${JSON.stringify(searchResult.nextPage)}`,
+        } : {}),
+      };
+    }
     if (!calls.length) {
+      if (choosingProducts) {
+        throw new HttpError(503, 'Trợ lý AI chưa chọn được sản phẩm tư vấn. Vui lòng thử lại.');
+      }
       let text = result.text?.trim();
       if (!text) throw new HttpError(503, 'Trợ lý AI chưa trả lời được. Vui lòng thử lại.');
       if (comparisonInput) {
@@ -118,26 +98,23 @@ export const sendChatMessage = async (message, history = []) => {
         try { answer = JSON.parse(text); } catch {
           throw new HttpError(503, 'Bảng so sánh chưa hợp lệ. Vui lòng thử lại.');
         }
-        const sourceValues = comparisonInput.map(product => [
-          'Chưa có thông tin', ...Object.values(product.technicalSpecs).map(String),
-          ...product.specifications.flatMap(group => (group.items ?? []).map(item => item.value)),
-        ]);
-        if (typeof answer.reply !== 'string' || !answer.reply.trim() ||
+        if (!answer || typeof answer.reply !== 'string' || !answer.reply.trim() ||
             !Array.isArray(answer.rows) || !answer.rows.length || answer.rows.length > 6 || answer.rows.some(row =>
               !row || typeof row.label !== 'string' || !row.label.trim() ||
               !Array.isArray(row.values) || row.values.length !== comparisonInput.length ||
-              row.values.some((value, index) => !sourceValues[index].includes(value)))) {
-          throw new HttpError(503, 'Bảng so sánh chưa khớp dữ liệu sản phẩm. Vui lòng thử lại.');
+              row.values.some(value => typeof value !== 'string'))) {
+          throw new HttpError(503, 'Bảng so sánh chưa hợp lệ. Vui lòng thử lại.');
         }
         text = answer.reply.trim();
         comparison = {
           products: comparisonInput.map(({ name, slug }) => ({ name, slug })),
           rows: [
-            ...answer.rows.map((row, index) => ({ key: `spec-${index}`, label: row.label, values: row.values })),
+            ...answer.rows
+              .filter(row => !/^(giá(?:\s|$)|price(?:\s|$))/i.test(row.label.trim()))
+              .map((row, index) => ({ key: `spec-${index}`, label: row.label, values: row.values })),
             ...[['ram', 'RAM'], ['storage', 'Bộ nhớ trong'], ['version', 'Phiên bản so sánh'], ['price', 'Giá bán']]
               .map(([key, label]) => ({ key, label, values: comparisonInput.map(product => product[key]) })),
           ],
-          priceNote: 'Giá theo phiên bản ghi trong bảng. “Từ” là giá thấp nhất của các SKU đang bán khớp yêu cầu.',
         };
       }
       return { reply: text, message: text, products: [...products.values()].slice(0, 10), comparison };
@@ -149,9 +126,11 @@ export const sendChatMessage = async (message, history = []) => {
     for (const call of calls) {
       let response;
       try {
-        const found = await executeProductFunctionCall(call);
+        const found = await executeProductTool(call);
         response = found.response;
+        if (call.name === 'searchProducts') searchResult = found;
         if (call.name === 'compareProducts') {
+          searchResult = null;
           comparisonInput = found.comparisonInput ?? null;
           comparison = null;
           products.clear();

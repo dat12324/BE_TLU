@@ -59,7 +59,7 @@ try {
     err.name === "MongooseServerSelectionError" ||
     err.name === "MongoParseError" ||
     err.name?.startsWith("Mongo")
-      ? "Không thể kết nối MongoDB. Vui lòng kiểm tra MONGODB_URI và bảo đảm MongoDB đang hoạt động."
+      ? "Không thể kết nối MongoDB. Vui lòng kiểm tra MONGODB_URI ."
       : err.code === "EADDRINUSE"
         ? "Cổng PORT đang được sử dụng."
         : err.message;
